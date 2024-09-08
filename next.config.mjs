@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Ihre anderen Konfigurationsoptionen hier
+  swcMinify: true,
+  reactStrictMode: true,
 }
 
 export default nextConfig;
