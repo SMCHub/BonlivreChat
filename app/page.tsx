@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileInfo, setUploadedFileInfo] = useState<string | null>(null);
   const [uploadedFileContent, setUploadedFileContent] = useState<string | null>(null);
+  const [fileRequest, setFileRequest] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
@@ -163,9 +164,9 @@ export default function ChatPage() {
           setUploadedFileContent(uploadResult.fileContent);
           
           if (uploadResult.fileType.startsWith('image/')) {
-            setInput(`[Bild hochgeladen: ${file.name}]\n\nBildinhalt: ${uploadResult.fileContent}\n\nBitte analysieren Sie dieses Bild und beschreiben Sie, was Sie sehen.`);
+            setFileRequest(`[Bild hochgeladen: ${file.name}]\n\nBitte analysieren Sie dieses Bild und beschreiben Sie, was Sie sehen.`);
           } else {
-            setInput(`[Datei hochgeladen: ${file.name}]\n\nDateiinhalt: ${uploadResult.fileContent}\n\nBitte analysieren Sie den Inhalt dieser Datei und geben Sie eine Zusammenfassung.`);
+            setFileRequest(`[Datei hochgeladen: ${file.name}]\n\nBitte analysieren Sie den Inhalt dieser Datei und geben Sie eine Zusammenfassung.`);
           }
         }
       } catch (error) {
@@ -232,19 +233,10 @@ export default function ChatPage() {
 
   const sendMessageAndUpdateChat = async (chatId: string, newMessage: Message) => {
     try {
-      // Zuerst die Benutzernachricht zum Chat hinzufügen
-      setCurrentChat(prevChat => {
-        if (prevChat && prevChat.id === chatId) {
-          return {
-            ...prevChat,
-            messages: [...prevChat.messages, newMessage]
-          };
-        }
-        return prevChat;
-      });
-
-      // Warten Sie einen Moment, damit die UI aktualisiert werden kann
-      await new Promise(resolve => setTimeout(resolve, 100));
+      let messageContent = newMessage.content;
+      if (fileRequest) {
+        messageContent = `${fileRequest}\n\nDateiinhalt: ${uploadedFileContent}`;
+      }
 
       const response = await fetch(`/api/chats/${chatId}`, {
         method: 'POST',
@@ -252,7 +244,7 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ messages: [newMessage] }),
+        body: JSON.stringify({ messages: [{ ...newMessage, content: messageContent }] }),
       });
 
       if (!response.ok) {
@@ -261,25 +253,28 @@ export default function ChatPage() {
 
       const { message: assistantMessage } = await response.json();
 
-      // Dann die Assistentennachricht zum Chat hinzufügen
+      setChats(prevChats => 
+        prevChats.map(chat => 
+          chat.id === chatId ? {
+            ...chat,
+            messages: [...chat.messages, newMessage, assistantMessage]
+          } : chat
+        )
+      );
+
       setCurrentChat(prevChat => {
         if (prevChat && prevChat.id === chatId) {
           return {
             ...prevChat,
-            messages: [...prevChat.messages, assistantMessage]
+            messages: [...prevChat.messages, newMessage, assistantMessage]
           };
         }
         return prevChat;
       });
 
-      // Aktualisieren Sie auch den Chat in der Liste aller Chats
-      setChats(prevChats => 
-        prevChats.map(chat => 
-          chat.id === chatId 
-            ? { ...chat, messages: [...chat.messages, newMessage, assistantMessage] } 
-            : chat
-        )
-      );
+      setFileRequest(null);
+      setUploadedFileContent(null);
+      setUploadedFileInfo(null);
 
       return assistantMessage;
     } catch (error) {
@@ -290,12 +285,15 @@ export default function ChatPage() {
   };
 
   const handleSend = async () => {
-    if (!currentChat || !input.trim()) return;
+    if (!currentChat) return;
+
+    const messageContent = fileRequest || input;
+    if (!messageContent.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: messageContent,
     };
 
     setInput('');
@@ -489,7 +487,7 @@ export default function ChatPage() {
                   className={`flex-1 bg-gray-700 text-white border-gray-600 ${!currentChat ? 'opacity-50 cursor-not-allowed' : ''}`}
                   disabled={!currentChat}
                 />
-                <FileUpload onFileSelect={handleFileSelect} disabled={!currentChat || isLoading} />
+                <FileUpload onFileSelect={handleFileSelect} disabled={!currentChat || isLoading || fileRequest !== null} />
                 <Button 
                   onClick={handleSend} 
                   disabled={isLoading || !currentChat} 
