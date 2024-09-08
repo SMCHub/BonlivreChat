@@ -19,6 +19,8 @@ model User {
   email     String   @unique
   password  String
   chats     Chat[]
+
+  @@index([email])
 }
 
 model Chat {
@@ -28,6 +30,8 @@ model Chat {
   messages  Message[]
   userId    String
   user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Message {

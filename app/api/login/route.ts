@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
@@ -19,6 +20,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Ungültiges Passwort' }, { status: 401 });
   }
 
-  // Hier würden Sie normalerweise eine Sitzung erstellen oder ein JWT-Token ausgeben
-  return NextResponse.json({ id: user.id, email: user.email });
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set');
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+  const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  return NextResponse.json({ token });
 }
