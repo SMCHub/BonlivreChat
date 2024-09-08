@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
+import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -10,11 +11,19 @@ export async function GET(request: Request, { params }: { params: { chatId: stri
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const userId = authHeader.split(' ')[1];
+  const token = authHeader.split(' ')[1];
 
-  const chatId = params.chatId;
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set');
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 
   try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
+    const userId = decoded.id;
+
+    const chatId = params.chatId;
+
     const chat = await prisma.chat.findUnique({
       where: { id: chatId, userId },
       include: { messages: true },
@@ -25,7 +34,7 @@ export async function GET(request: Request, { params }: { params: { chatId: stri
     return NextResponse.json(chat);
   } catch (error) {
     console.error('Error fetching chat:', error);
-    return NextResponse.json({ error: 'Error fetching chat' }, { status: 500 });
+    return NextResponse.json({ error: 'Error fetching chat', details: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -34,12 +43,20 @@ export async function POST(request: Request, { params }: { params: { chatId: str
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const userId = authHeader.split(' ')[1];
+  const token = authHeader.split(' ')[1];
 
-  const chatId = params.chatId;
-  const { message } = await request.json();
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set');
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 
   try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
+    const userId = decoded.id;
+
+    const chatId = params.chatId;
+    const { message } = await request.json();
+
     const chat = await prisma.chat.findUnique({
       where: { id: chatId, userId },
       include: { messages: true },
