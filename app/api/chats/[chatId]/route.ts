@@ -43,19 +43,14 @@ export async function POST(request: Request, { params }: { params: { chatId: str
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const token = authHeader.split(' ')[1];
-
-  if (!process.env.JWT_SECRET) {
-    console.error('JWT_SECRET is not set');
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
     const userId = decoded.id;
 
+    const { messages } = await request.json();
     const chatId = params.chatId;
-    const { message } = await request.json();
 
     const chat = await prisma.chat.findUnique({
       where: { id: chatId, userId },
@@ -66,11 +61,11 @@ export async function POST(request: Request, { params }: { params: { chatId: str
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
     }
 
-    const updatedMessages = [...chat.messages, message];
+    const allMessages = [...chat.messages, ...messages];
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+      messages: allMessages.map(m => ({ role: m.role, content: m.content })),
     });
 
     const assistantMessage = completion.choices[0].message;
@@ -80,7 +75,7 @@ export async function POST(request: Request, { params }: { params: { chatId: str
       data: {
         messages: {
           create: [
-            message,
+            ...messages,
             { role: assistantMessage.role, content: assistantMessage.content || '' },
           ],
         },
@@ -88,10 +83,10 @@ export async function POST(request: Request, { params }: { params: { chatId: str
       include: { messages: true },
     });
 
-    return NextResponse.json(updatedChat);
+    return NextResponse.json({ chat: updatedChat, message: assistantMessage });
   } catch (error) {
     console.error('Error updating chat:', error);
-    return NextResponse.json({ error: 'Error updating chat' }, { status: 500 });
+    return NextResponse.json({ error: 'Error updating chat', details: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -100,17 +95,33 @@ export async function DELETE(request: Request, { params }: { params: { chatId: s
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const userId = authHeader.split(' ')[1];
+  const token = authHeader.split(' ')[1];
+
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set');
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+
+  let userId;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
+    userId = decoded.id;
+  } catch (error) {
+    return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  }
 
   const chatId = params.chatId;
 
   try {
     const chat = await prisma.chat.findUnique({
-      where: { id: chatId, userId },
+      where: { 
+        id: chatId,
+        userId: userId
+      },
     });
 
     if (!chat) {
-      return NextResponse.json({ error: 'Chat not found or unauthorized' }, { status: 404 });
+      return NextResponse.json({ error: 'Chat not found or you are not authorized to delete it' }, { status: 404 });
     }
 
     // Zuerst alle zugehörigen Nachrichten löschen
