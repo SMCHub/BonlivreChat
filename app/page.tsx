@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X } from "lucide-react"
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import jwt from 'jsonwebtoken';
 
 interface Message {
   id: string;
@@ -38,9 +39,25 @@ export default function ChatPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('/api/verify-token', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.user) {
+          setUser(data.user);
+        } else {
+          router.push('/login');
+        }
+      })
+      .catch(error => {
+        console.error('Error verifying token:', error);
+        router.push('/login');
+      });
     } else {
       router.push('/login');
     }
@@ -58,7 +75,7 @@ export default function ChatPage() {
     try {
       const response = await fetch('/api/chats', {
         headers: {
-          'Authorization': `Bearer ${user.id}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       if (!response.ok) {
@@ -85,7 +102,7 @@ export default function ChatPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.id}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({ messages: [] }),
       });
@@ -114,7 +131,7 @@ export default function ChatPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${user.id}`
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
           },
           body: JSON.stringify({ message: newMessage }),
         });
@@ -143,7 +160,7 @@ export default function ChatPage() {
       const response = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user.id}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       if (!response.ok) {
@@ -160,7 +177,7 @@ export default function ChatPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
+    localStorage.removeItem('token');
     setUser(null);
     setChats([]);
     setCurrentChat(null);
