@@ -3,17 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
 }
 
 body {
@@ -24,12 +16,6 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
 }
 
 html, body {
@@ -73,5 +59,83 @@ html, body {
   .sidebar-toggle {
     position: absolute;
     left: 1rem;
+  }
+}
+
+/* Mobile-spezifische Anpassungen */
+@media (max-width: 768px) {
+  .h-screen {
+    height: calc(100vh - 56px); /* Berücksichtigt die Höhe der mobilen Statusleiste */
+  }
+
+  .h-\[calc\(100vh-8rem\)\] {
+    height: calc(100vh - 8rem - 56px); /* Passt die Höhe des Chatbereichs an */
+  }
+
+  .sidebar-toggle {
+    top: 0.5rem;
+    left: 0.5rem;
+  }
+
+  .flex-1 {
+    flex: 1 1 0%;
+  }
+
+  .w-full {
+    width: 100%;
+  }
+
+  .p-4 {
+    padding: 1rem;
+  }
+
+  .bg-gray-800 {
+    background-color: #1f2937;
+  }
+
+  .border-t {
+    border-top-width: 1px;
+  }
+
+  .border-gray-700 {
+    border-color: #374151;
+  }
+}
+
+/* Verbesserte Scrollbargestaltung */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #2D3748;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4A5568;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
+
+/* Zusätzliche Anpassungen für bessere mobile Darstellung */
+@media (max-width: 768px) {
+  .flex-col {
+    flex-direction: column;
+  }
+
+  .space-x-2 > * + * {
+    margin-left: 0.5rem;
+  }
+
+  .mb-2 {
+    margin-bottom: 0.5rem;
+  }
+
+  .text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
   }
 }

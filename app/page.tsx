@@ -414,7 +414,7 @@ export default function ChatPage() {
 
           {/* Chat area */}
           <div className="flex-1 flex flex-col w-full">
-            <ScrollArea className="flex-1 p-4 bg-gray-900 h-full" ref={scrollAreaRef}>
+            <ScrollArea className="flex-1 p-4 bg-gray-900 h-[calc(100vh-8rem)]" ref={scrollAreaRef}>
               <AnimatePresence>
                 {currentChat && currentChat.messages ? (
                   currentChat.messages.length > 0 ? (
