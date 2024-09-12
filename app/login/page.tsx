@@ -17,24 +17,54 @@ export default function LoginPage() {
     const endpoint = isLogin ? '/api/login' : '/api/register';
     
     try {
+      console.log('Sende Anfrage an:', endpoint);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('Antwort-Status:', response.status);
+      const responseData = await response.json();
+      console.log('Antwort-Daten:', responseData);
+
       if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('token', data.token);
+        setTokenWithExpiry(responseData.token);
         router.push('/');
       } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Ein Fehler ist aufgetreten');
+        alert(responseData.error || 'Ein Fehler ist aufgetreten');
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Fehler:', error);
       alert('Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
     }
+  };
+
+  const setTokenWithExpiry = (token: string) => {
+    const now = new Date();
+    const expiryTime = now.getTime() + 55 * 60 * 1000; // 55 Minuten
+    const item = {
+      token: token,
+      expiry: expiryTime,
+    };
+    localStorage.setItem('tokenData', JSON.stringify(item));
+  };
+
+  const getTokenWithExpiry = () => {
+    const tokenString = localStorage.getItem('tokenData');
+    if (!tokenString) {
+      return null;
+    }
+
+    const tokenData = JSON.parse(tokenString);
+    const now = new Date();
+
+    if (now.getTime() > tokenData.expiry) {
+      localStorage.removeItem('tokenData');
+      return null;
+    }
+
+    return tokenData.token;
   };
 
   return (

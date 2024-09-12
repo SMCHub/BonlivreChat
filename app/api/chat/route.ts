@@ -6,6 +6,11 @@ import jwt from 'jsonwebtoken';
 const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+interface Product {
+  name: string;
+  price: string;
+}
+
 export async function POST(req: Request) {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -16,17 +21,16 @@ export async function POST(req: Request) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
     const userId = decoded.id;
 
-    const { messages } = await req.json();
+    const { messages, products } = await req.json();
 
     // Genauere Token-Schätzung
     const estimateTokens = (text: string) => {
-      return Math.ceil(text.length / 2.5); // Noch konservativere Schätzung
+      return Math.ceil(text.length / 2.5);
     };
 
-    // Reduzieren Sie die Nachrichten, bis sie unter dem Limit liegen
     let totalTokens = 0;
     const reducedMessages = [];
-    const MAX_TOKENS = 12000; // Noch konservativerer Sicherheitspuffer für 16k Modell
+    const MAX_TOKENS = 12000;
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const messageTokens = estimateTokens(JSON.stringify(messages[i]));
@@ -37,6 +41,20 @@ export async function POST(req: Request) {
 
     console.log(`Geschätzte Token-Anzahl: ${totalTokens}`);
 
+    // Fügen Sie Produktinformationen zur Nachricht hinzu, nur wenn Produkte gefunden wurden
+    if (products && products.length > 0) {
+      const productInfo = (products as Product[]).map(p => `${p.name} (${p.price})`).join(', ');
+      reducedMessages.push({
+        role: 'system',
+        content: `Folgende Produkte wurden gefunden: ${productInfo}. Bitte empfehle in deiner Antwort diese spezifischen Produkte dem Benutzer und gib eine kurze Beschreibung zu jedem Buch.`
+      });
+    } else if (messages[messages.length - 1].content.toLowerCase().startsWith('bonlivre produkt:')) {
+      reducedMessages.push({
+        role: 'system',
+        content: 'Es wurden keine spezifischen Produkte für diese Anfrage gefunden. Bitte informiere den Benutzer darüber und schlage vor, die Suche zu verfeinern oder nach anderen Produkten zu suchen.'
+      });
+    }
+
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo-16k",
@@ -46,7 +64,6 @@ export async function POST(req: Request) {
 
       const assistantMessage = completion.choices[0].message;
 
-      // Speichern Sie nur die letzten Nachrichten in der Datenbank
       const lastMessages = [...reducedMessages.slice(-2), { role: assistantMessage.role, content: assistantMessage.content || '' }];
 
       const newChat = await prisma.chat.create({
@@ -68,6 +85,6 @@ export async function POST(req: Request) {
     }
   } catch (error) {
     console.error('Error:', error);
-    return NextResponse.json({ error: 'An error occurred', details: (error as any).message }, { status: 500 });
+    return NextResponse.json({ error: 'An error occurred' }, { status: 500 });
   }
 }

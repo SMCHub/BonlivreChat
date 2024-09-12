@@ -30,6 +30,7 @@ model Chat {
   messages  Message[]
   userId    String
   user      User      @relation(fields: [userId], references: [id])
+  products  Product[]
 
   @@index([userId])
 }
@@ -41,4 +42,18 @@ model Message {
   content   String
   chatId    String
   chat      Chat     @relation(fields: [chatId], references: [id])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  price       String
+  description String?
+  permalink   String?
+  imageUrl    String?
+  categories  String[]
+  chatId      String
+  chat        Chat     @relation(fields: [chatId], references: [id])
+
+  @@index([chatId])
 }

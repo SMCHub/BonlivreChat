@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
-import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X } from "lucide-react"
+import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X, Info } from "lucide-react"
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import jwt from 'jsonwebtoken';
@@ -27,6 +27,16 @@ interface UserData {
   email: string;
 }
 
+interface Product {
+  id: string;
+  name: string;
+  price: string;
+  short_description: string;
+  permalink: string;
+  images: { src: string }[];
+  categories: string[];
+}
+
 export default function ChatPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -41,39 +51,67 @@ export default function ChatPage() {
   const [uploadedFileContent, setUploadedFileContent] = useState<string | null>(null);
   const [fileRequest, setFileRequest] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<number>(-1);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   const router = useRouter();
 
+  const commands = [
+    "/Bonlivre Produkt:",
+    "/Bonlivre Kategorie:"
+  ];
+
+  const getTokenWithExpiry = () => {
+    const tokenString = localStorage.getItem('tokenData');
+    if (!tokenString) {
+      return null;
+    }
+
+    const tokenData = JSON.parse(tokenString);
+    const now = new Date();
+
+    if (now.getTime() > tokenData.expiry) {
+      localStorage.removeItem('tokenData');
+      return null;
+    }
+
+    return tokenData.token;
+  };
+
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getTokenWithExpiry();
     if (token) {
       fetch('/api/verify-token', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       })
-      .then(response => response.json())
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Token ungültig');
+        }
+        return response.json();
+      })
       .then(data => {
         if (data.user) {
+          console.log('Benutzer erfolgreich gesetzt:', data.user);
           setUser(data.user);
         } else {
-          router.push('/login');
+          throw new Error('Kein Benutzer in den Daten gefunden');
         }
       })
       .catch(error => {
-        console.error('Error verifying token:', error);
+        console.error('Fehler bei der Token-Überprüfung:', error);
+        localStorage.removeItem('tokenData');
         router.push('/login');
       });
     } else {
+      console.log('Kein gültiger Token gefunden, leite zur Login-Seite weiter');
       router.push('/login');
     }
   }, []);
-
-  useEffect(() => {
-    if (user) {
-      fetchChats();
-    }
-  }, [user]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -100,53 +138,71 @@ export default function ChatPage() {
   }, [currentChat?.messages, isLoading]);
 
   const fetchChats = async () => {
-    if (!user) return;
-    setIsFetchingChats(true);
     try {
       const response = await fetch('/api/chats', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
         }
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch chats');
+        const errorData = await response.json();
+        throw new Error(`Fehler beim Abrufen der Chats: ${errorData.error}`);
       }
-      const data = await response.json();
-      setChats(data);
-      if (data.length > 0 && !currentChat) {
-        setCurrentChat(data[0]);
+      const chatsData = await response.json();
+      setChats(chatsData);
+      if (chatsData.length > 0) {
+        setCurrentChat(chatsData[0]);
       }
     } catch (error) {
-      console.error('Error fetching chats:', error);
-      setError('Fehler beim Abrufen der Chats. Bitte versuchen Sie es später erneut.');
-    } finally {
-      setIsFetchingChats(false);
+      console.error('Fehler beim Abrufen der Chats:', error);
+      setError('Fehler beim Laden der Chats. Bitte versuchen Sie es später erneut.');
     }
   };
 
-  const createNewChat = async () => {
-    if (!user) return;
-    setIsLoading(true);
+  const fetchWordPressProducts = async () => {
+    try {
+      const response = await fetch('/api/wordpress', {
+        headers: {
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch WordPress products');
+      }
+      const data = await response.json();
+      setProducts(data.products.map((product: any) => ({
+        id: product.id,
+        name: product.name,
+        price: new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(product.price),
+        short_description: product.short_description,
+        permalink: product.permalink,
+        images: product.images,
+        categories: product.categories.map((cat: any) => cat.name)
+      })));
+    } catch (error) {
+      console.error('Error fetching WordPress products:', error);
+      setError('Fehler beim Abrufen der WordPress-Produkte. Bitte versuchen Sie es später erneut.');
+    }
+  };
+
+  const createNewChat = async (newChat: Chat): Promise<Chat> => {
     try {
       const response = await fetch('/api/chats', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
         },
-        body: JSON.stringify({ messages: [] }),
+        body: JSON.stringify({ messages: newChat.messages }),
       });
       if (!response.ok) {
-        throw new Error('Failed to create new chat');
+        const errorData = await response.json();
+        throw new Error(`Fehler beim Erstellen des neuen Chats: ${errorData.error}`);
       }
-      const newChat = await response.json();
-      setChats(prevChats => [newChat, ...prevChats]);
-      setCurrentChat(newChat);
+      return await response.json();
     } catch (error) {
-      console.error('Error creating chat:', error);
-      setError('Neuer Chat konnte nicht erstellt werden. Bitte versuchen Sie es spter erneut.');
-    } finally {
-      setIsLoading(false);
+      console.error('Fehler beim Erstellen des neuen Chats:', error);
+      throw error;
     }
   };
 
@@ -218,7 +274,7 @@ export default function ChatPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
         },
         body: JSON.stringify({ message: newMessage }),
       });
@@ -227,7 +283,7 @@ export default function ChatPage() {
       }
     } catch (error) {
       console.error('Error updating chat on server:', error);
-      setError('Fehler beim Aktualisieren des Chats. Bitte versuchen Sie es später erneut.');
+      setError('Fehler beim Aktualisieren des Chats. Bitte versuchen Sie es spter erneut.');
     }
   };
 
@@ -242,7 +298,7 @@ export default function ChatPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
         },
         body: JSON.stringify({ messages: [{ ...newMessage, content: messageContent }] }),
       });
@@ -251,26 +307,16 @@ export default function ChatPage() {
         throw new Error('Failed to send message');
       }
 
-      const { message: assistantMessage } = await response.json();
+      const updatedChat = await response.json();
+      const assistantMessage = updatedChat.messages[updatedChat.messages.length - 1];
 
       setChats(prevChats => 
         prevChats.map(chat => 
-          chat.id === chatId ? {
-            ...chat,
-            messages: [...chat.messages, newMessage, assistantMessage]
-          } : chat
+          chat.id === chatId ? updatedChat : chat
         )
       );
 
-      setCurrentChat(prevChat => {
-        if (prevChat && prevChat.id === chatId) {
-          return {
-            ...prevChat,
-            messages: [...prevChat.messages, newMessage, assistantMessage]
-          };
-        }
-        return prevChat;
-      });
+      setCurrentChat(updatedChat);
 
       setFileRequest(null);
       setUploadedFileContent(null);
@@ -285,45 +331,98 @@ export default function ChatPage() {
   };
 
   const handleSend = async () => {
-    if (!currentChat) return;
+    if (!input.trim() && !fileRequest) return;
+    if (!currentChat) {
+      console.error('Kein aktueller Chat ausgewählt');
+      return;
+    }
 
-    const messageContent = fileRequest || input;
-    if (!messageContent.trim()) return;
-
-    const userMessage: Message = {
+    const newMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: messageContent,
+      content: fileRequest || input
     };
 
-    setInput('');
     setIsLoading(true);
 
     try {
-      await sendMessageAndUpdateChat(currentChat.id, userMessage);
+      if (input.toLowerCase().startsWith('/bonlivre')) {
+        setCurrentChat(prev => prev ? {
+          ...prev,
+          messages: [...prev.messages, newMessage]
+        } : null);
+
+        if (input.toLowerCase().startsWith('/bonlivre produkt:') ||
+            input.toLowerCase().startsWith('/bonlivre kategorie:')) {
+          const [command, searchTerm] = input.split(':');
+          const searchType = command.split(' ')[1].toLowerCase();
+          const foundProducts = await searchWordPressProducts(searchTerm.trim(), searchType);
+          
+          if (foundProducts.length > 0) {
+            foundProducts.forEach(product => displayProduct(product));
+          } else {
+            const noProductsMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: `Es wurden keine Produkte für "${searchTerm.trim()}" gefunden. Bitte versuchen Sie es mit einem anderen Suchbegriff.`
+            };
+            setCurrentChat(prev => prev ? {
+              ...prev,
+              messages: [...prev.messages, noProductsMessage]
+            } : null);
+          }
+        } else {
+          // Unbekannter /bonlivre Befehl
+          const unknownCommandMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `Unbekannter Befehl. Verfügbare Befehle sind: /bonlivre produkt:, /bonlivre kategorie:`
+          };
+          setCurrentChat(prev => prev ? {
+            ...prev,
+            messages: [...prev.messages, unknownCommandMessage]
+          } : null);
+        }
+      } else {
+        // Normale Nachricht
+        await sendMessageAndUpdateChat(currentChat.id, newMessage);
+      }
+      setInput('');
+      setFileRequest(null);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Fehler beim Senden der Nachricht:', error);
+      setError('Fehler beim Senden der Nachricht. Bitte versuchen Sie es später erneut.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const deleteChat = async (chatId: string) => {
-    if (!user) return;
+    console.log('Versuche Chat zu löschen:', chatId);
+    if (!user) {
+      console.log('Kein Benutzer eingeloggt');
+      return;
+    }
     try {
       const response = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
         }
       });
+      console.log('Antwort vom Server:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error('Chat konnte nicht gelöscht werden');
       }
-      setChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
+      setChats(prevChats => {
+        console.log('Aktualisiere Chats nach dem Löschen');
+        return prevChats.filter(chat => chat.id !== chatId);
+      });
       if (currentChat?.id === chatId) {
+        console.log('Setze aktuellen Chat auf null');
         setCurrentChat(null);
       }
+      console.log('Chat erfolgreich gelöscht');
     } catch (error) {
       console.error('Fehler beim Löschen des Chats:', error);
       setError('Chat konnte nicht gelöscht werden. Bitte versuchen Sie es später erneut.');
@@ -331,11 +430,195 @@ export default function ChatPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('tokenData');
     setUser(null);
     setChats([]);
     setCurrentChat(null);
+    console.log('Benutzer ausgeloggt');
     router.push('/login');
+  };
+
+  const searchProducts = (query: string): Product[] => {
+    const searchTerm = query.toLowerCase().replace('bonlivre produkt:', '').trim();
+    return products.filter(product => 
+      product.name.toLowerCase().includes(searchTerm) ||
+      product.short_description.toLowerCase().includes(searchTerm)
+    );
+  };
+
+  const displayProduct = (product: Product) => {
+    const assistantMessage: Message = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `
+        <div class="product-bubble">
+          <a href="${product.permalink}" target="_blank">
+            <img src="${product.images[0]?.src || '/placeholder-image.jpg'}" alt="${product.name}" class="product-image">
+          </a>
+          <h3>${product.name}</h3>
+          <p>${product.price}</p>
+          <p>Kategorien: ${product.categories.join(', ')}</p>
+        </div>
+      `
+    };
+    setCurrentChat(prev => prev ? {
+      ...prev,
+      messages: [...prev.messages, assistantMessage]
+    } : null);
+  };
+
+  const searchWordPressProducts = async (searchTerm: string, searchType: string): Promise<Product[]> => {
+    try {
+      let url = `/api/wordpress?`;
+      
+      if (searchType === 'kategorie') {
+        url += `category=${encodeURIComponent(searchTerm)}`;
+      } else if (searchType === 'produkt') {
+        url += `search=${encodeURIComponent(searchTerm)}`;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Fehler beim Abrufen der WordPress-Produkte');
+      }
+      const data = await response.json();
+      
+      const products = data.products.map((product: any) => ({
+        id: product.id,
+        name: product.name,
+        price: new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(product.price),
+        short_description: product.short_description,
+        permalink: product.permalink,
+        images: product.images,
+        categories: product.categories.map((cat: any) => cat.name)
+      }));
+
+      // Speichern Sie die gefundenen Produkte in der Datenbank
+      if (currentChat) {
+        await fetch(`/api/chats/${currentChat.id}/products`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getTokenWithExpiry()}`
+          },
+          body: JSON.stringify({ products })
+        });
+      }
+
+      return products;
+    } catch (error) {
+      console.error('Fehler beim Abrufen der WordPress-Produkte:', error);
+      return [];
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+    console.log("Input value:", value);
+
+    if (value.startsWith('/')) {
+      const partialCommand = value.slice(1).toLowerCase();
+      const matchingCommands = commands.filter(cmd => 
+        cmd.toLowerCase().startsWith(partialCommand)
+      );
+      console.log("Matching commands:", matchingCommands);
+      setSuggestions(matchingCommands);
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (suggestions.length > 0) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const newIndex = (selectedSuggestion + 1) % suggestions.length;
+        setSelectedSuggestion(newIndex);
+        setInput(suggestions[newIndex]);
+      } else if (e.key === 'Enter' && selectedSuggestion !== -1) {
+        e.preventDefault();
+        setInput(suggestions[selectedSuggestion]);
+        setSuggestions([]);
+        setSelectedSuggestion(-1);
+      }
+    } else if (e.key === 'Enter') {
+      handleSend();
+    }
+  };
+
+  useEffect(() => {
+    console.log("Suggestions updated:", suggestions);
+  }, [suggestions]);
+
+  const loadChatHistory = async (chatId: string) => {
+    try {
+      const response = await fetch(`/api/chats/${chatId}`, {
+        headers: {
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Fehler beim Laden des Chat-Verlaufs');
+      }
+      const chatData = await response.json();
+      setCurrentChat(chatData);
+      if (chatData.products) {
+        setProducts(chatData.products);
+      }
+    } catch (error) {
+      console.error('Fehler beim Laden des Chat-Verlaufs:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (currentChat) {
+      loadChatHistory(currentChat.id);
+    }
+  }, [currentChat?.id]);
+
+  useEffect(() => {
+    const fetchChats = async () => {
+      try {
+        const response = await fetch('/api/chats', {
+          headers: {
+            'Authorization': `Bearer ${getTokenWithExpiry()}`
+          }
+        });
+        if (!response.ok) {
+          throw new Error('Fehler beim Abrufen der Chats');
+        }
+        const chatsData = await response.json();
+        setChats(chatsData);
+        if (chatsData.length > 0) {
+          setCurrentChat(chatsData[0]); // Setze den ersten Chat als aktuellen Chat
+        }
+      } catch (error) {
+        console.error('Fehler beim Abrufen der Chats:', error);
+      }
+    };
+
+    fetchChats();
+  }, []);
+
+  const handleCreateNewChat = async () => {
+    const newChat: Chat = {
+      id: Date.now().toString(),
+      messages: []
+    };
+
+    try {
+      const createdChat = await createNewChat(newChat);
+      setCurrentChat(createdChat);
+      setChats(prevChats => [createdChat, ...prevChats]);
+    } catch (error) {
+      console.error('Fehler beim Erstellen des neuen Chats:', error);
+      setError('Neuer Chat konnte nicht erstellt werden. Bitte versuchen Sie es später erneut.');
+    }
   };
 
   if (!user) {
@@ -349,7 +632,7 @@ export default function ChatPage() {
         <header className="bg-gray-800 shadow p-4 flex justify-between items-center relative">
           <div className="flex items-center w-full md:w-auto">
             <div className="w-12 md:w-16"></div>
-            <h1 className="text-xl font-bold md:text-center md:flex-grow">BonlivreChat</h1>
+            <h1 className="text-xl font-bold md:text-center md:flex-grow">BonlivreChat.</h1>
           </div>
           <div className="hidden md:flex items-center space-x-4">
             <span>{user?.email}</span>
@@ -370,10 +653,17 @@ export default function ChatPage() {
               isSidebarOpen ? 'block' : 'hidden md:block'
             }`}
           >
-            <Button onClick={createNewChat} className="w-full mb-4 bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
-              {isLoading ? <Spinner className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-              Neuer Chat
-            </Button>
+            {/* Neuer Chat Button */}
+            <div className="mb-4">
+              <Button
+                onClick={handleCreateNewChat}
+                className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <PlusCircle className="w-5 h-5 mr-2" />
+                Neuen Chat erstellen
+              </Button>
+            </div>
+
             <ScrollArea className="h-[calc(100vh-12rem)]">
               {isFetchingChats ? (
                 <div className="flex justify-center items-center h-full">
@@ -427,16 +717,10 @@ export default function ChatPage() {
                           exit={{ opacity: 0, y: -20 }}
                           className={`mb-8 ${message.role === 'user' ? 'flex justify-end' : 'flex justify-start'}`}
                         >
-                          <div className={`max-w-[70%] p-3 rounded-lg ${message.role === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>
-                            {message.content && message.content.startsWith('Datei hochgeladen:') ? (
-                              <div>
-                                <p>{message.content.split('(')[0]}</p>
-                                <p className="text-sm text-gray-300">{message.content.split('(')[1].replace(')', '')}</p>
-                              </div>
-                            ) : (
-                              message.content
-                            )}
-                          </div>
+                          <div 
+                            className={`max-w-[70%] p-3 rounded-lg ${message.role === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}
+                            dangerouslySetInnerHTML={{ __html: message.content }}
+                          />
                         </motion.div>
                       ) : null
                     ))
@@ -478,23 +762,61 @@ export default function ChatPage() {
                   </Button>
                 </div>
               )}
-              <div className="flex space-x-2">
+              <div className="relative mb-2">
                 <Input
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
                   placeholder="Schreiben Sie eine Nachricht..."
-                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                  className={`flex-1 bg-gray-700 text-white border-gray-600 ${!currentChat ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="w-full bg-gray-700 text-white border-gray-600 pr-24"
                   disabled={!currentChat}
                 />
-                <FileUpload onFileSelect={handleFileSelect} disabled={!currentChat || isLoading || fileRequest !== null} />
-                <Button 
-                  onClick={handleSend} 
-                  disabled={isLoading || !currentChat} 
-                  className={`bg-blue-600 hover:bg-blue-700 ${!currentChat ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isLoading ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                </Button>
+                {suggestions.length > 0 && (
+                  <div className="suggestions-container">
+                    {suggestions.map((suggestion, index) => (
+                      <div
+                        key={suggestion}
+                        className={`suggestion-item ${index === selectedSuggestion ? 'selected' : ''}`}
+                        onClick={() => {
+                          setInput(suggestion);
+                          setSuggestions([]);
+                        }}
+                      >
+                        {suggestion}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 space-x-2">
+                  <button
+                    className="text-gray-400 hover:text-white focus:outline-none"
+                    onMouseEnter={() => setShowTooltip(true)}
+                    onMouseLeave={() => setShowTooltip(false)}
+                    onClick={() => setShowTooltip(!showTooltip)}
+                  >
+                    <Info className="h-5 w-5" />
+                  </button>
+                  {showTooltip && (
+                    <div className="tooltip">
+                      <p className="font-bold mb-1">Verfügbare Befehle:</p>
+                      <ul>
+                        <li>/Bonlivre Produkt: [Suchbegriff]</li>
+                        <li>/Bonlivre Kategorie: [Kategorie]</li>
+                      </ul>
+                    </div>
+                  )}
+                  <FileUpload 
+                    onFileSelect={handleFileSelect} 
+                    disabled={!currentChat || isLoading || fileRequest !== null}
+                  />
+                  <Button 
+                    onClick={handleSend} 
+                    disabled={isLoading || !currentChat} 
+                    className="bg-blue-600 hover:bg-blue-700 p-1"
+                  >
+                    {isLoading ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
