@@ -43,7 +43,7 @@
 }
 
 body {
-  background-color: #f0f2f5;
+  background-color: #ffffff;
   color: #1c1e21;
   font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;
   line-height: 1.5;
@@ -190,6 +190,10 @@ html {
   .text-sm {
     font-size: 0.875rem;
     line-height: 1.25rem;
+  }
+
+  .text-2xl {
+    font-size: 1.25rem;
   }
 }
 

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
-import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X, Info, Moon, Sun, User } from "lucide-react"
+import { MessageSquare, Send, LogOut, PlusCircle, Trash, X, Info, Moon, Sun, User } from "lucide-react"
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import jwt from 'jsonwebtoken';
@@ -669,25 +669,31 @@ export default function ChatPage() {
     }
   };
 
+  const toggleSidebar = () => {
+    console.log('Sidebar Toggle wurde geklickt');
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
   if (!user) {
     return null; // oder eine Lade-Animation
   }
 
   return (
     <>
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-screen bg-white">
         {/* Header */}
-        <header className="shadow-md p-4 flex justify-between items-center relative bg-white">
-          {/* Burger-Icon für Sidebar */}
-          <button
-            className="p-2 rounded-full text-gray-800 hover:bg-gray-200 transition-colors duration-200"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          >
-            {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-
-          {/* Logo */}
-          <h1 className="text-2xl font-bold text-accent-color">BonlivreChat.</h1>
+        <header className="shadow-md p-4 flex items-center justify-between relative bg-white z-50">
+          <div className="flex items-center">
+            {/* Burger-Icon für Sidebar */}
+            <button
+              className="p-2 mr-2 rounded-full text-gray-800 hover:bg-gray-200 transition-colors duration-200 block"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            {/* Logo */}
+            <h1 className="text-2xl font-bold text-accent-color">BonlivreChat.</h1>
+          </div>
 
           {/* Profil und Abmelden Icons */}
           <div className="flex items-center space-x-2">
@@ -883,14 +889,6 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
-
-      {/* Sidebar Toggle Button */}
-      <button
-        className="sidebar-toggle fixed top-4 left-2 md:left-4 bg-gray-200 p-2 rounded-full z-50 md:absolute text-gray-800"
-        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-      >
-        {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-      </button>
     </>
   );
 }
