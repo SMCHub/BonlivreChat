@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
 
 export async function GET(request: Request) {
   console.log('Chats route called');
@@ -16,8 +16,6 @@ export async function GET(request: Request) {
     console.error('JWT_SECRET is not set');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-
-  const prisma = new PrismaClient();
 
   try {
     console.log('Attempting to verify token');
@@ -57,8 +55,6 @@ export async function POST(request: Request) {
     console.error('JWT_SECRET is not set');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-
-  const prisma = new PrismaClient();
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };

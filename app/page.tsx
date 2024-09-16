@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
-import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X, Info, Moon, Sun } from "lucide-react"
+import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X, Info, Moon, Sun, User } from "lucide-react"
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import jwt from 'jsonwebtoken';
@@ -678,15 +678,24 @@ export default function ChatPage() {
       <div className="flex flex-col h-screen">
         {/* Header */}
         <header className="shadow-md p-4 flex justify-between items-center relative bg-white">
-          <div className="flex items-center w-full md:w-auto">
-            <div className="w-12 md:w-16"></div>
-            <h1 className="text-2xl font-bold md:text-center md:flex-grow text-accent-color">BonlivreChat.</h1>
-          </div>
-          <div className="hidden md:flex items-center space-x-4">
-            <span className="text-text-secondary">{user?.email}</span>
-            <Button onClick={handleLogout} variant="ghost" className="text-sm py-1 px-2 transition-colors duration-200 text-text-primary hover:bg-background-secondary">
-              <LogOut className="h-4 w-4 mr-2" />
-              <span>Abmelden</span>
+          {/* Burger-Icon für Sidebar */}
+          <button
+            className="p-2 rounded-full text-gray-800 hover:bg-gray-200 transition-colors duration-200"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          >
+            {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+
+          {/* Logo */}
+          <h1 className="text-2xl font-bold text-accent-color">BonlivreChat.</h1>
+
+          {/* Profil und Abmelden Icons */}
+          <div className="flex items-center space-x-2">
+            <Button onClick={() => router.push('/profile')} variant="ghost" className="p-2 text-text-primary hover:bg-background-secondary rounded-full">
+              <User className="h-5 w-5" />
+            </Button>
+            <Button onClick={handleLogout} variant="ghost" className="p-2 text-text-primary hover:bg-background-secondary rounded-full">
+              <LogOut className="h-5 w-5" />
             </Button>
           </div>
         </header>
@@ -745,11 +754,17 @@ export default function ChatPage() {
                 </AnimatePresence>
               )}
             </ScrollArea>
-            <div className="md:hidden mt-4">
-              <Button onClick={handleLogout} variant="ghost" className="w-full text-sm py-2 px-4 hover:bg-background-secondary transition-colors duration-200">
-                <LogOut className="h-4 w-4 mr-2" />
-                <span>Abmelden ({user?.email})</span>
-              </Button>
+            <div className="md:hidden mt-4 bg-gray-100 p-4 rounded-lg shadow-inner">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <User className="h-6 w-6 text-gray-600" />
+                  <span className="text-sm text-gray-700">{user?.email}</span>
+                </div>
+                <Button onClick={handleLogout} variant="ghost" className="text-sm py-1 px-2 hover:bg-gray-200 transition-colors duration-200">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  <span>Abmelden</span>
+                </Button>
+              </div>
             </div>
           </motion.div>
 
