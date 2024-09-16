@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
-import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X, Info } from "lucide-react"
+import { MessageSquare, Send, LogOut, PlusCircle, Trash, Menu, X, Info, Moon, Sun } from "lucide-react"
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import jwt from 'jsonwebtoken';
@@ -80,6 +80,46 @@ export default function ChatPage() {
     return tokenData.token;
   };
 
+  const setTokenWithExpiry = (token: string) => {
+    const now = new Date();
+    const expiryTime = now.getTime() + 55 * 60 * 1000; // 55 Minuten
+    const item = {
+      token: token,
+      expiry: expiryTime,
+    };
+    localStorage.setItem('tokenData', JSON.stringify(item));
+  };
+
+  const refreshTokenIfNeeded = async () => {
+    const token = getTokenWithExpiry();
+    if (token) {
+      const tokenData = JSON.parse(localStorage.getItem('tokenData') || '{}');
+      const now = new Date().getTime();
+      const timeUntilExpiry = tokenData.expiry - now;
+      
+      // Aktualisiere Token, wenn weniger als 5 Minuten übrig sind
+      if (timeUntilExpiry < 5 * 60 * 1000) {
+        try {
+          const response = await fetch('/api/refresh-token', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setTokenWithExpiry(data.token);
+            console.log('Token erfolgreich aktualisiert');
+          } else {
+            throw new Error('Token konnte nicht aktualisiert werden');
+          }
+        } catch (error) {
+          console.error('Fehler beim Aktualisieren des Tokens:', error);
+          handleLogout();
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     const token = getTokenWithExpiry();
     if (token) {
@@ -98,14 +138,20 @@ export default function ChatPage() {
         if (data.user) {
           console.log('Benutzer erfolgreich gesetzt:', data.user);
           setUser(data.user);
+          refreshTokenIfNeeded();
         } else {
           throw new Error('Kein Benutzer in den Daten gefunden');
         }
       })
       .catch(error => {
         console.error('Fehler bei der Token-Überprüfung:', error);
-        localStorage.removeItem('tokenData');
-        router.push('/login');
+        if (error.message === 'Datenbankverbindung fehlgeschlagen') {
+          setError('Es gibt ein Problem mit der Datenbankverbindung. Bitte versuchen Sie es später erneut.');
+        } else if (error.message === 'Ungültiger Token') {
+          handleLogout();
+        } else {
+          setError('Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
+        }
       });
     } else {
       console.log('Kein gültiger Token gefunden, leite zur Login-Seite weiter');
@@ -567,8 +613,10 @@ export default function ChatPage() {
       }
       const chatData = await response.json();
       setCurrentChat(chatData);
-      if (chatData.products) {
+      if (chatData.products && chatData.products.length > 0) {
         setProducts(chatData.products);
+      } else {
+        setProducts([]); // Leere das Produkt-Array, wenn keine Produkte vorhanden sind
       }
     } catch (error) {
       console.error('Fehler beim Laden des Chat-Verlaufs:', error);
@@ -627,16 +675,16 @@ export default function ChatPage() {
 
   return (
     <>
-      <div className="flex flex-col h-screen bg-gray-900 text-white">
+      <div className="flex flex-col h-screen">
         {/* Header */}
-        <header className="bg-gray-800 shadow p-4 flex justify-between items-center relative">
+        <header className="shadow-md p-4 flex justify-between items-center relative bg-white">
           <div className="flex items-center w-full md:w-auto">
             <div className="w-12 md:w-16"></div>
-            <h1 className="text-xl font-bold md:text-center md:flex-grow">BonlivreChat.</h1>
+            <h1 className="text-2xl font-bold md:text-center md:flex-grow text-accent-color">BonlivreChat.</h1>
           </div>
           <div className="hidden md:flex items-center space-x-4">
-            <span>{user?.email}</span>
-            <Button onClick={handleLogout} variant="ghost" className="text-sm py-1 px-2 hover:bg-gray-700">
+            <span className="text-text-secondary">{user?.email}</span>
+            <Button onClick={handleLogout} variant="ghost" className="text-sm py-1 px-2 transition-colors duration-200 text-text-primary hover:bg-background-secondary">
               <LogOut className="h-4 w-4 mr-2" />
               <span>Abmelden</span>
             </Button>
@@ -649,25 +697,24 @@ export default function ChatPage() {
           <motion.div 
             initial={false}
             animate={{ x: isSidebarOpen ? 0 : -300 }}
-            className={`w-64 bg-gray-800 p-4 absolute md:relative h-full z-10 ${
+            className={`w-64 p-4 absolute md:relative h-full z-10 bg-gray-100 text-gray-800 ${
               isSidebarOpen ? 'block' : 'hidden md:block'
             }`}
           >
-            {/* Neuer Chat Button */}
             <div className="mb-4">
               <Button
                 onClick={handleCreateNewChat}
-                className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white"
+                className="w-full flex items-center justify-center bg-gray-200 hover:bg-gray-300 transition-colors duration-200"
               >
-                <PlusCircle className="w-5 h-5 mr-2" />
-                Neuen Chat erstellen
+                <PlusCircle className="w-5 h-5 mr-2 text-gray-600" />
+                <span className="text-gray-800">Neuen Chat erstellen</span>
               </Button>
             </div>
 
             <ScrollArea className="h-[calc(100vh-12rem)]">
               {isFetchingChats ? (
                 <div className="flex justify-center items-center h-full">
-                  <Spinner className="h-6 w-6" />
+                  <Spinner className="h-6 w-6 text-accent-color" />
                 </div>
               ) : (
                 <AnimatePresence>
@@ -681,12 +728,16 @@ export default function ChatPage() {
                     >
                       <Button
                         onClick={() => setCurrentChat(chat)}
-                        className={`flex-grow justify-start ${currentChat?.id === chat.id ? 'bg-blue-600' : 'bg-gray-700'}`}
+                        className={`flex-grow justify-start transition-colors duration-200 ${
+                          currentChat?.id === chat.id 
+                            ? 'bg-gray-200 text-text-primary'
+                            : 'bg-background-secondary text-text-primary hover:bg-gray-100'
+                        }`}
                       >
                         <MessageSquare className="mr-2 h-4 w-4" />
                         Chat {chat.id.slice(0, 6)}...
                       </Button>
-                      <Button onClick={() => deleteChat(chat.id)} className="ml-2 bg-red-500 hover:bg-red-600">
+                      <Button onClick={() => deleteChat(chat.id)} className="ml-2 bg-error-color hover:bg-opacity-80 transition-colors duration-200">
                         <Trash className="h-4 w-4" />
                       </Button>
                     </motion.div>
@@ -695,7 +746,7 @@ export default function ChatPage() {
               )}
             </ScrollArea>
             <div className="md:hidden mt-4">
-              <Button onClick={handleLogout} variant="ghost" className="w-full text-sm py-2 px-4 hover:bg-gray-700">
+              <Button onClick={handleLogout} variant="ghost" className="w-full text-sm py-2 px-4 hover:bg-background-secondary transition-colors duration-200">
                 <LogOut className="h-4 w-4 mr-2" />
                 <span>Abmelden ({user?.email})</span>
               </Button>
@@ -703,8 +754,8 @@ export default function ChatPage() {
           </motion.div>
 
           {/* Chat area */}
-          <div className="flex-1 flex flex-col w-full">
-            <ScrollArea className="flex-1 p-4 bg-gray-900 h-[calc(100vh-8rem)]" ref={scrollAreaRef}>
+          <div className="flex-1 flex flex-col w-full bg-white">
+            <ScrollArea className="flex-1 p-4 h-[calc(100vh-8rem)]" ref={scrollAreaRef}>
               <AnimatePresence>
                 {currentChat && currentChat.messages ? (
                   currentChat.messages.length > 0 ? (
@@ -718,9 +769,18 @@ export default function ChatPage() {
                           className={`mb-8 ${message.role === 'user' ? 'flex justify-end' : 'flex justify-start'}`}
                         >
                           <div 
-                            className={`max-w-[70%] p-3 rounded-lg ${message.role === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}
-                            dangerouslySetInnerHTML={{ __html: message.content }}
-                          />
+                            className={`max-w-[70%] p-3 rounded-lg ${
+                              message.role === 'user' 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-blue-100 text-blue-900'
+                            }`}
+                          >
+                            {message.content.startsWith('/Bonlivre') ? (
+                              <span className="text-white">{message.content}</span>
+                            ) : (
+                              <span dangerouslySetInnerHTML={{ __html: message.content }} />
+                            )}
+                          </div>
                         </motion.div>
                       ) : null
                     ))
@@ -746,37 +806,23 @@ export default function ChatPage() {
                 </motion.div>
               )}
             </ScrollArea>
-
             {/* Input area */}
-            <div className="p-4 bg-gray-800 border-t border-gray-700">
-              {uploadedFileInfo && (
-                <div className="mb-2 p-2 bg-gray-700 rounded-md flex items-center justify-between">
-                  <span className="text-sm text-gray-300 truncate">{uploadedFileInfo}</span>
-                  <Button
-                    onClick={() => setUploadedFileInfo(null)}
-                    variant="ghost"
-                    size="icon"
-                    className="text-gray-400 hover:text-gray-200"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+            <div className="p-4 bg-gray-100">
               <div className="relative mb-2">
                 <Input
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   placeholder="Schreiben Sie eine Nachricht..."
-                  className="w-full bg-gray-700 text-white border-gray-600 pr-24"
+                  className="w-full pr-24 rounded-lg border-none shadow-md transition-all duration-300 focus:ring-2 focus:ring-accent-color bg-white text-gray-800"
                   disabled={!currentChat}
                 />
                 {suggestions.length > 0 && (
-                  <div className="suggestions-container">
+                  <div className="suggestions-container bg-input-bg border border-input-border rounded-lg shadow-lg">
                     {suggestions.map((suggestion, index) => (
                       <div
                         key={suggestion}
-                        className={`suggestion-item ${index === selectedSuggestion ? 'selected' : ''}`}
+                        className={`suggestion-item p-2 hover:bg-accent-color hover:text-white cursor-pointer transition-colors duration-200 ${index === selectedSuggestion ? 'bg-accent-color text-white' : ''}`}
                         onClick={() => {
                           setInput(suggestion);
                           setSuggestions([]);
@@ -789,7 +835,7 @@ export default function ChatPage() {
                 )}
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 space-x-2">
                   <button
-                    className="text-gray-400 hover:text-white focus:outline-none"
+                    className="text-text-tertiary hover:text-text-secondary focus:outline-none transition-colors duration-200"
                     onMouseEnter={() => setShowTooltip(true)}
                     onMouseLeave={() => setShowTooltip(false)}
                     onClick={() => setShowTooltip(!showTooltip)}
@@ -797,7 +843,7 @@ export default function ChatPage() {
                     <Info className="h-5 w-5" />
                   </button>
                   {showTooltip && (
-                    <div className="tooltip">
+                    <div className="tooltip bg-background-secondary text-text-primary p-2 rounded-lg shadow-md">
                       <p className="font-bold mb-1">Verfügbare Befehle:</p>
                       <ul>
                         <li>/Bonlivre Produkt: [Suchbegriff]</li>
@@ -812,7 +858,7 @@ export default function ChatPage() {
                   <Button 
                     onClick={handleSend} 
                     disabled={isLoading || !currentChat} 
-                    className="bg-blue-600 hover:bg-blue-700 p-1"
+                    className="bg-accent-color hover:bg-link-hover-color p-1 transition-colors duration-200"
                   >
                     {isLoading ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                   </Button>
@@ -825,7 +871,7 @@ export default function ChatPage() {
 
       {/* Sidebar Toggle Button */}
       <button
-        className="sidebar-toggle fixed top-4 left-2 md:left-4 bg-gray-800 p-2 rounded-full z-50 md:absolute"
+        className="sidebar-toggle fixed top-4 left-2 md:left-4 bg-gray-200 p-2 rounded-full z-50 md:absolute text-gray-800"
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
       >
         {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}

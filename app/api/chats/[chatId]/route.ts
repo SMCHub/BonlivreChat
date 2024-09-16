@@ -110,17 +110,14 @@ export async function DELETE(request: Request, { params }: { params: { chatId: s
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 
-  let userId;
+  const prisma = new PrismaClient();
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
-    userId = decoded.id;
-  } catch (error) {
-    return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-  }
+    const userId = decoded.id;
+    const chatId = params.chatId;
 
-  const chatId = params.chatId;
-
-  try {
+    // Überprüfen Sie zuerst, ob der Chat existiert und dem Benutzer gehört
     const chat = await prisma.chat.findUnique({
       where: { 
         id: chatId,
@@ -132,17 +129,22 @@ export async function DELETE(request: Request, { params }: { params: { chatId: s
       return NextResponse.json({ error: 'Chat not found or you are not authorized to delete it' }, { status: 404 });
     }
 
-    // Zuerst alle zugehörigen Nachrichten löschen
+    // Löschen Sie zuerst alle zugehörigen Produkte
+    await prisma.product.deleteMany({
+      where: { chatId: chatId },
+    });
+
+    // Dann löschen Sie alle zugehörigen Nachrichten
     await prisma.message.deleteMany({
       where: { chatId: chatId },
     });
 
-    // Dann den Chat selbst löschen
+    // Schließlich löschen Sie den Chat selbst
     await prisma.chat.delete({
       where: { id: chatId },
     });
 
-    return NextResponse.json({ message: 'Chat and associated messages deleted successfully' });
+    return NextResponse.json({ message: 'Chat and associated messages and products deleted successfully' });
   } catch (error) {
     console.error('Error deleting chat:', error);
     return NextResponse.json({ error: 'Error deleting chat', details: (error as Error).message }, { status: 500 });

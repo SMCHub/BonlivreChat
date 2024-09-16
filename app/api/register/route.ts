@@ -9,6 +9,17 @@ export async function POST(req: Request) {
     const { email, password } = await req.json();
     console.log('Received registration request for email:', email);
 
+    // Validierung
+    if (!email || !password) {
+      return NextResponse.json({ error: 'E-Mail und Passwort sind erforderlich' }, { status: 400 });
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return NextResponse.json({ error: 'Ungültige E-Mail-Adresse' }, { status: 400 });
+    }
+    if (password.length < 8) {
+      return NextResponse.json({ error: 'Das Passwort muss mindestens 8 Zeichen lang sein' }, { status: 400 });
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email } });
 
     if (existingUser) {
