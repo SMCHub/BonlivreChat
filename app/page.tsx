@@ -10,6 +10,11 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import jwt from 'jsonwebtoken';
 import { FileUpload } from '@/components/ui/FileUpload';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { ClipboardIcon } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -55,12 +60,14 @@ export default function ChatPage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState<number>(-1);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showCopiedTooltip, setShowCopiedTooltip] = useState(false);
 
   const router = useRouter();
 
   const commands = [
     "/Bonlivre Produkt:",
-    "/Bonlivre Kategorie:"
+    "/Bonlivre Kategorie:",
+    "/Bonlivre Bestellung:"
   ];
 
   const getTokenWithExpiry = () => {
@@ -224,7 +231,7 @@ export default function ChatPage() {
         permalink: product.permalink,
         images: product.images,
         categories: product.categories.map((cat: any) => cat.name)
-      })));
+      })))
     } catch (error) {
       console.error('Error fetching WordPress products:', error);
       setError('Fehler beim Abrufen der WordPress-Produkte. Bitte versuchen Sie es später erneut.');
@@ -402,10 +409,16 @@ export default function ChatPage() {
             input.toLowerCase().startsWith('/bonlivre kategorie:')) {
           const [command, searchTerm] = input.split(':');
           const searchType = command.split(' ')[1].toLowerCase();
+          console.log(`Suche nach ${searchType}: ${searchTerm.trim()}`);
           const foundProducts = await searchWordPressProducts(searchTerm.trim(), searchType);
           
+          console.log(`Gefundene Produkte: ${foundProducts.length}`);
+          
           if (foundProducts.length > 0) {
-            foundProducts.forEach(product => displayProduct(product));
+            foundProducts.forEach(product => {
+              console.log(`Zeige Produkt an: ${product.name}`);
+              displayProduct(product);
+            });
           } else {
             const noProductsMessage: Message = {
               id: Date.now().toString(),
@@ -417,12 +430,48 @@ export default function ChatPage() {
               messages: [...prev.messages, noProductsMessage]
             } : null);
           }
+        } else if (input.toLowerCase().startsWith('/bonlivre bestellung:')) {
+          const [, orderInfo] = input.split(':');
+          const [orderNumber, postcode] = orderInfo.trim().split(' ');
+          
+          if (!orderNumber || !postcode) {
+            const errorMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: 'Bitte geben Sie sowohl die Bestellnummer als auch die Postleitzahl an.'
+            };
+            setCurrentChat(prev => prev ? {
+              ...prev,
+              messages: [...prev.messages, errorMessage]
+            } : null);
+            return;
+          }
+
+          const orderDetails = await fetchOrderDetails(orderNumber, postcode);
+
+          if (orderDetails.error) {
+            let errorContent = orderDetails.error;
+            if (orderDetails.orderPostcode && orderDetails.requestPostcode) {
+              errorContent += ` Die Postleitzahl in der Bestellung (${orderDetails.orderPostcode}) stimmt nicht mit der angegebenen Postleitzahl (${orderDetails.requestPostcode}) überein.`;
+            }
+            const errorMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: errorContent
+            };
+            setCurrentChat(prev => prev ? {
+              ...prev,
+              messages: [...prev.messages, errorMessage]
+            } : null);
+          } else {
+            displayOrderDetails(orderDetails);
+          }
         } else {
           // Unbekannter /bonlivre Befehl
           const unknownCommandMessage: Message = {
             id: Date.now().toString(),
             role: 'assistant',
-            content: `Unbekannter Befehl. Verfügbare Befehle sind: /bonlivre produkt:, /bonlivre kategorie:`
+            content: `Unbekannter Befehl. Verfügbare Befehle sind: /bonlivre produkt:, /bonlivre kategorie:, /bonlivre bestellung:`
           };
           setCurrentChat(prev => prev ? {
             ...prev,
@@ -441,6 +490,83 @@ export default function ChatPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchOrderDetails = async (orderNumber: string, postcode: string): Promise<any> => {
+    try {
+      const response = await fetch(`/api/wordpress/order?orderNumber=${orderNumber}&postcode=${postcode}`, {
+        headers: {
+          'Authorization': `Bearer ${getTokenWithExpiry()}`
+        }
+      });
+      const data = await response.json();
+      if (data.error) {
+        if (data.orderPostcode && data.requestPostcode) {
+          return {
+            error: `${data.error} Die Postleitzahl in der Bestellung (${data.orderPostcode}) stimmt nicht mit der angegebenen Postleitzahl (${data.requestPostcode}) überein.`
+          };
+        }
+        return { error: data.error };
+      }
+      return data;
+    } catch (error) {
+      console.error('Fehler beim Abrufen der Bestelldetails:', error);
+      return { error: 'Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.' };
+    }
+  };
+
+  const displayOrderDetails = (orderDetails: any) => {
+    if (orderDetails.error) {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: orderDetails.error
+      };
+      setCurrentChat(prev => prev ? {
+        ...prev,
+        messages: [...prev.messages, errorMessage]
+      } : null);
+      return;
+    }
+
+    let statusMessage = '';
+    switch (orderDetails.status) {
+      case 'completed':
+        statusMessage = 'Ihre Bestellung wurde erfolgreich abgeschlossen und per A-Post versendet. Sie sollte in Kürze bei Ihnen eintreffen. Wir hoffen, Sie werden viel Freude an Ihren neuen Büchern haben!';
+        break;
+      case 'processing':
+        statusMessage = 'Ihre Bestellung wird derzeit von unserem engagierten Team bearbeitet. Wir setzen alles daran, sie so schnell wie möglich für den Versand vorzubereiten.';
+        break;
+      case 'on-hold':
+        statusMessage = 'Ihre Bestellung befindet sich aktuell in Wartestellung. Wir erwarten die Lieferung in unserem Logistikzentrum und werden sie umgehend bearbeiten, sobald sie eingetroffen ist.';
+        break;
+      default:
+        statusMessage = `Status: ${orderDetails.status}`;
+    }
+
+    const orderMessage: Message = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `
+        <div class="order-bubble">
+          <h3>Bestelldetails</h3>
+          <p>Bestellnummer: ${orderDetails.number}</p>
+          <p>${statusMessage}</p>
+          <p>Datum: ${new Date(orderDetails.date_created).toLocaleDateString()}</p>
+          <p>Gesamtbetrag: ${orderDetails.total} ${orderDetails.currency}</p>
+          <h4>Bestellte Produkte:</h4>
+          <ul>
+            ${orderDetails.line_items.map((item: any) => `
+              <li>${item.name} - Menge: ${item.quantity}, Preis: ${item.total} ${orderDetails.currency}</li>
+            `).join('')}
+          </ul>
+        </div>
+      `
+    };
+    setCurrentChat(prev => prev ? {
+      ...prev,
+      messages: [...prev.messages, orderMessage]
+    } : null);
   };
 
   const deleteChat = async (chatId: string) => {
@@ -674,6 +800,12 @@ export default function ChatPage() {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setShowCopiedTooltip(true);
+    setTimeout(() => setShowCopiedTooltip(false), 2000);
+  };
+
   if (!user) {
     return null; // oder eine Lade-Animation
   }
@@ -792,14 +924,17 @@ export default function ChatPage() {
                           <div 
                             className={`max-w-[70%] p-3 rounded-lg ${
                               message.role === 'user' 
-                                ? 'bg-blue-600 text-white' 
-                                : 'bg-blue-100 text-blue-900'
+                                ? 'bg-gray-200 text-gray-800' 
+                                : 'bg-gray-100 text-gray-700'
                             }`}
                           >
                             {message.content.startsWith('/Bonlivre') ? (
-                              <span className="text-white">{message.content}</span>
+                              <span className="text-gray-800">{message.content}</span>
                             ) : (
-                              <span dangerouslySetInnerHTML={{ __html: message.content }} />
+                              <div 
+                                className="prose prose-sm max-w-none"
+                                dangerouslySetInnerHTML={{ __html: message.content }}
+                              />
                             )}
                           </div>
                         </motion.div>
@@ -839,11 +974,13 @@ export default function ChatPage() {
                   disabled={!currentChat}
                 />
                 {suggestions.length > 0 && (
-                  <div className="suggestions-container bg-input-bg border border-input-border rounded-lg shadow-lg">
+                  <div className="suggestions-container bg-gray-700 border border-gray-600 rounded-lg shadow-lg text-sm">
                     {suggestions.map((suggestion, index) => (
                       <div
                         key={suggestion}
-                        className={`suggestion-item p-2 hover:bg-accent-color hover:text-white cursor-pointer transition-colors duration-200 ${index === selectedSuggestion ? 'bg-accent-color text-white' : ''}`}
+                        className={`suggestion-item p-1.5 hover:bg-gray-600 cursor-pointer transition-colors duration-200 ${
+                          index === selectedSuggestion ? 'bg-gray-600 text-white' : 'text-white'
+                        }`}
                         onClick={() => {
                           setInput(suggestion);
                           setSuggestions([]);
@@ -864,11 +1001,12 @@ export default function ChatPage() {
                     <Info className="h-5 w-5" />
                   </button>
                   {showTooltip && (
-                    <div className="tooltip bg-background-secondary text-text-primary p-2 rounded-lg shadow-md">
+                    <div className="tooltip bg-background-secondary text-text-primary p-2 rounded-lg shadow-md text-xs">
                       <p className="font-bold mb-1">Verfügbare Befehle:</p>
                       <ul>
                         <li>/Bonlivre Produkt: [Suchbegriff]</li>
                         <li>/Bonlivre Kategorie: [Kategorie]</li>
+                        <li>/Bonlivre Bestellung: [Bestellnummer] [PLZ]</li>
                       </ul>
                     </div>
                   )}

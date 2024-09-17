@@ -53,7 +53,7 @@ export async function POST(request: Request, { params }: { params: { chatId: str
     if (!Array.isArray(messages) || messages.length === 0 || !messages[0].role || !messages[0].content) {
       throw new Error('Ungültige Nachricht vom Client');
     }
-    const message = messages[0]; // Wir verwenden nur die erste Nachricht
+    const message = messages[0];
     const chatId = params.chatId;
 
     const chat = await prisma.chat.findUnique({
@@ -65,17 +65,49 @@ export async function POST(request: Request, { params }: { params: { chatId: str
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
     }
 
-    const allMessages = [...chat.messages, message];
+    let assistantMessage;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: allMessages.map(m => ({ role: m.role, content: m.content })),
-    });
+    if (message.content.toLowerCase().startsWith('/bonlivre bestellung:')) {
+      const [, orderInfo] = message.content.split(':');
+      const [orderNumber, postcode] = orderInfo.trim().split(' ');
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/wordpress/order?orderNumber=${orderNumber}&postcode=${postcode}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-    const assistantMessage = completion.choices[0]?.message;
+      if (response.ok) {
+        const orderDetails = await response.json();
+        assistantMessage = {
+          role: 'assistant',
+          content: `
+            <div class="order-bubble">
+              <h3>Bestelldetails</h3>
+              <p>Bestellnummer: ${orderDetails.number}</p>
+              <p>Status: ${orderDetails.status}</p>
+              <p>Datum: ${new Date(orderDetails.date_created).toLocaleDateString()}</p>
+              <p>Gesamtbetrag: ${orderDetails.total} ${orderDetails.currency}</p>
+            </div>
+          `
+        };
+      } else {
+        assistantMessage = {
+          role: 'assistant',
+          content: `Es wurde keine Bestellung mit der Nummer "${orderNumber}" und der PLZ "${postcode}" gefunden. Bitte überprüfen Sie die eingegebenen Daten.`
+        };
+      }
+    } else {
+      const allMessages = [...chat.messages, message];
+      const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: allMessages.map(m => ({ role: m.role, content: m.content })),
+      });
+      assistantMessage = completion.choices[0]?.message;
+    }
 
     if (!assistantMessage || !assistantMessage.role || !assistantMessage.content) {
-      throw new Error('Ungültige Antwort von OpenAI');
+      throw new Error('Ungültige Antwort');
     }
 
     const updatedChat = await prisma.chat.update({
