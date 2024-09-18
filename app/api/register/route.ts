@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '@/lib/prisma';
+import { sendWelcomeEmail } from '@/lib/emailService';
 
 export async function POST(req: Request) {
   try {
@@ -37,6 +38,9 @@ export async function POST(req: Request) {
         password: hashedPassword,
       },
     });
+
+    // Senden der Willkommens-E-Mail
+    await sendWelcomeEmail(user.email);
 
     if (!process.env.JWT_SECRET) {
       console.error('JWT_SECRET is not set');
