@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
+
+// Entfernen Sie die Zeile mit prisma.$connect()
 
 export async function GET(request: Request) {
   console.log('Chats route called');
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
     const newChat = await prisma.chat.create({
       data: {
         userId,
-        title: title || "Neuer Chat", // Fügen Sie diese Zeile hinzu
+        title: title || "Neuer Chat",
       },
     });
 

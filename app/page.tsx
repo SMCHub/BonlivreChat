@@ -20,6 +20,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  createdAt: Date;
 }
 
 interface Chat {
@@ -394,7 +395,8 @@ export default function ChatPage() {
     const newMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: fileRequest || input
+      content: fileRequest || input,
+      createdAt: new Date()
     };
 
     setIsLoading(true);
@@ -482,7 +484,8 @@ export default function ChatPage() {
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: orderDetails.error
+        content: orderDetails.error,
+        createdAt: new Date()
       };
       setCurrentChat(prev => prev ? {
         ...prev,
@@ -523,7 +526,8 @@ export default function ChatPage() {
             `).join('')}
           </ul>
         </div>
-      `
+      `,
+      createdAt: new Date()
     };
     setCurrentChat(prev => prev ? {
       ...prev,
@@ -593,7 +597,8 @@ export default function ChatPage() {
           <p>${product.price}</p>
           <p>Kategorien: ${product.categories.join(', ')}</p>
         </div>
-      `
+      `,
+      createdAt: new Date()
     };
     setCurrentChat(prev => prev ? {
       ...prev,
@@ -768,6 +773,10 @@ export default function ChatPage() {
     setTimeout(() => setShowCopiedTooltip(false), 2000);
   };
 
+  function formatTime(date: Date) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
   if (!user) {
     return null; // oder eine Lade-Animation
   }
@@ -883,21 +892,40 @@ export default function ChatPage() {
                           exit={{ opacity: 0, y: -20 }}
                           className={`mb-8 ${message.role === 'user' ? 'flex justify-end' : 'flex justify-start'}`}
                         >
-                          <div 
-                            className={`max-w-[70%] p-3 rounded-lg ${
-                              message.role === 'user' 
-                                ? 'bg-gray-200 text-gray-800' 
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {message.content.startsWith('/Bonlivre') ? (
-                              <span className="text-gray-800">{message.content}</span>
+                          <div className={`messageContainer ${message.role === 'assistant' ? 'bg-gray-100' : 'bg-blue-100'} rounded-lg p-4 mb-4`}>
+                            {message.role === 'assistant' ? (
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  code({ node, className, children, ...props }) {
+                                    const match = /language-(\w+)/.exec(className || '')
+                                    const language = match ? match[1] : ''
+                                    return language ? (
+                                      <SyntaxHighlighter
+                                        {...(props as any)}
+                                        style={vscDarkPlus as any}
+                                        language={language}
+                                        PreTag="div"
+                                      >
+                                        {String(children).replace(/\n$/, '')}
+                                      </SyntaxHighlighter>
+                                    ) : (
+                                      <code className={className} {...props}>
+                                        {children}
+                                      </code>
+                                    )
+                                  }
+                                }}
+                              >
+                                {message.content}
+                              </ReactMarkdown>
                             ) : (
                               <div 
                                 className="prose prose-sm max-w-none"
                                 dangerouslySetInnerHTML={{ __html: message.content }}
                               />
                             )}
+                            <span className="messageTime">{formatTime(new Date(message.createdAt))}</span>
                           </div>
                         </motion.div>
                       ) : null

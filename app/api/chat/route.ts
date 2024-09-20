@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import jwt from 'jsonwebtoken';
 
-const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Fügen Sie diese Zeile hinzu
-prisma.$connect().then(() => console.log('Prisma connected')).catch(e => console.error('Prisma connection error:', e));
 
 interface Product {
   name: string;
@@ -33,7 +29,7 @@ export async function POST(req: Request) {
 
     let totalTokens = 0;
     const reducedMessages = [];
-    const MAX_TOKENS = 12000;
+    const MAX_TOKENS = 16000; // GPT-4 kann bis zu 8000 Token für Eingabe und 8000 für Ausgabe verarbeiten
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const messageTokens = estimateTokens(JSON.stringify(messages[i]));
@@ -58,11 +54,16 @@ export async function POST(req: Request) {
       });
     }
 
+    reducedMessages.unshift({
+      role: 'system',
+      content: 'Du bist ein KI-Assistent, der auf dem GPT-4-Modell basiert. Wenn du nach deiner Identität oder Version gefragt wirst, antworte entsprechend.'
+    });
+
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo-16k",
+        model: "gpt-4-turbo-preview",
         messages: reducedMessages,
-        max_tokens: 2000
+        max_tokens: 4000
       });
 
       const assistantMessage = completion.choices[0].message;
@@ -75,7 +76,8 @@ export async function POST(req: Request) {
           messages: {
             create: lastMessages.map(msg => ({
               role: msg.role,
-              content: msg.content
+              content: msg.content,
+              createdAt: new Date()
             })),
           },
         },
@@ -84,7 +86,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: assistantMessage, chatId: newChat.id });
     } catch (error) {
       console.error('Error:', error);
-      return NextResponse.json({ error: 'An error occurred', details: (error as any).message }, { status: 500 });
+      return NextResponse.json({ error: 'An error occurred', details: (error as any).message }, { status: 500 });    } finally {
+      await prisma.$disconnect();
     }
   } catch (error) {
     console.error('Error:', error);

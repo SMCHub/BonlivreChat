@@ -1,24 +1,10 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { handleError } from '@/lib/errorHandler';
 
-// Fügen Sie diese Funktion hinzu
-async function testDatabaseConnection() {
-  try {
-    await prisma.$connect()
-    console.log('Database connection successful')
-    const userCount = await prisma.user.count()
-    console.log(`Number of users in database: ${userCount}`)
-  } catch (error) {
-    console.error('Database connection failed:', error)
-  }
-}
-
-// Rufen Sie diese Funktion am Anfang Ihrer POST-Funktion auf
 export async function POST(request: Request) {
-  await testDatabaseConnection();
   try {
     const { email, password } = await request.json();
     console.log('Login attempt for:', email);

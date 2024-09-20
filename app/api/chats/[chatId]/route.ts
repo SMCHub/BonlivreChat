@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 import jwt from 'jsonwebtoken';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function GET(request: Request, { params }: { params: { chatId: string } }) {
@@ -24,10 +24,17 @@ export async function GET(request: Request, { params }: { params: { chatId: stri
 
     const chatId = params.chatId;
 
-    const chat = await prisma.chat.findUnique({
-      where: { id: chatId, userId },
-      include: { messages: true },
-    });
+    let chat;
+    try {
+      chat = await prisma.chat.findUnique({
+        where: { id: chatId, userId },
+        include: { messages: true },
+      });
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+      return NextResponse.json({ error: 'Database error', details: dbError instanceof Error ? dbError.message : String(dbError) }, { status: 500 });
+    }
+
     if (!chat) {
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
     }
@@ -99,9 +106,14 @@ export async function POST(request: Request, { params }: { params: { chatId: str
       }
     } else {
       const allMessages = [...chat.messages, message];
+      allMessages.unshift({
+        role: 'system',
+        content: 'Du bist ein KI-Assistent, der auf dem GPT-4-Modell basiert. Wenn du nach deiner Identität oder Version gefragt wirst, antworte entsprechend.'
+      });
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",  // oder das Modell, das Sie verwenden möchten
+        model: "gpt-4-turbo-preview",
         messages: allMessages.map(m => ({ role: m.role, content: m.content })),
+        max_tokens: 4000
       });
       assistantMessage = completion.choices[0]?.message;
     }
@@ -115,8 +127,8 @@ export async function POST(request: Request, { params }: { params: { chatId: str
       data: {
         messages: {
           create: [
-            message,
-            { role: assistantMessage.role, content: assistantMessage.content },
+            { ...message, createdAt: new Date() },
+            { role: assistantMessage.role, content: assistantMessage.content, createdAt: new Date() },
           ],
         },
       },
@@ -141,8 +153,6 @@ export async function DELETE(request: Request, { params }: { params: { chatId: s
     console.error('JWT_SECRET is not set');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-
-  const prisma = new PrismaClient();
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
@@ -180,8 +190,6 @@ export async function DELETE(request: Request, { params }: { params: { chatId: s
   } catch (error) {
     console.error('Error deleting chat:', error);
     return NextResponse.json({ error: 'Error deleting chat', details: (error as Error).message }, { status: 500 });
-  } finally {
-    await prisma.$disconnect();
   }
 }
 

@@ -451,3 +451,19 @@ html {
   margin: 1em 0;
   color: var(--text-secondary);
 }
+
+.messageTime {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: var(--background-secondary);
+  padding: 2px 6px;
+  border-radius: 10px;
+  position: absolute;
+  bottom: -10px;
+  right: 10px;
+}
+
+.messageContainer {
+  position: relative;
+  margin-bottom: 20px;
+}

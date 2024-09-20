@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
   console.log('Verify-token route called');
@@ -19,9 +19,6 @@ export async function GET(request: Request) {
   }
 
   try {
-    await prisma.$connect();
-    console.log('Database connection successful');
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string, email: string };
     console.log('Token verified, decoded:', decoded);
     
@@ -43,7 +40,5 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Ungültiger Token', details: error.message }, { status: 401 });
     }
     return NextResponse.json({ error: 'Fehler bei der Token-Überprüfung', details: (error as Error).message }, { status: 500 });
-  } finally {
-    await prisma.$disconnect();
   }
 }
