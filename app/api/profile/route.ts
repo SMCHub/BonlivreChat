@@ -22,6 +22,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Speichern Sie die Benutzerdaten im Cache
+
     return NextResponse.json(user);
   } catch (error) {
     console.error('Error fetching profile:', error);

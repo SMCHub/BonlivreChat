@@ -25,13 +25,24 @@ export async function GET(request: Request) {
     console.log('Token verified, decoded:', decoded);
     const userId = decoded.id;
 
-    console.log('Fetching chats for user:', userId);
+
+    // Wenn nicht im Cache, holen Sie die Daten aus der Datenbank
     const chats = await prisma.chat.findMany({
       where: { userId },
-      include: { messages: true },
+      select: {
+        id: true,
+        title: true,
+        updatedAt: true,
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          select: { content: true }
+        }
+      },
       orderBy: { updatedAt: 'desc' },
+      take: 20 // Begrenzen Sie die Anzahl der zurückgegebenen Chats
     });
-    console.log('Chats fetched:', chats.length);
+
     return NextResponse.json(chats);
   } catch (error) {
     console.error('Detailed error:', error);

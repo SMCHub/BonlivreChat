@@ -21,6 +21,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ token: newToken });
   } catch (error) {
     console.error('Fehler bei der Token-Überprüfung:', error);
-    return NextResponse.json({ error: 'Ungültiger Token' }, { status: 401 });
+    if (error instanceof jwt.TokenExpiredError) {
+      return NextResponse.json({ error: 'Token abgelaufen' }, { status: 401 });
+    } else if (error instanceof jwt.JsonWebTokenError) {
+      return NextResponse.json({ error: 'Ungültiger Token' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 });
   }
 }

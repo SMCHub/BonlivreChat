@@ -19,38 +19,98 @@ export default function ProfilePage() {
   const [newAvatar, setNewAvatar] = useState<File | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
+  const getTokenWithExpiry = () => {
+    const tokenString = localStorage.getItem('tokenData');
+    if (!tokenString) {
+      return null;
+    }
 
-  const fetchProfile = async () => {
-    try {
-      const token = localStorage.getItem('tokenData');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
+    const tokenData = JSON.parse(tokenString);
+    const now = new Date();
 
-      const response = await fetch('/api/profile', {
-        headers: {
-          'Authorization': `Bearer ${JSON.parse(token).token}`
+    if (now.getTime() > tokenData.expiry) {
+      localStorage.removeItem('tokenData');
+      return null;
+    }
+
+    return tokenData.token;
+  };
+
+  const setTokenWithExpiry = (token: string) => {
+    const now = new Date();
+    const expiryTime = now.getTime() + 55 * 60 * 1000; // 55 Minuten
+    const item = {
+      token: token,
+      expiry: expiryTime,
+    };
+    localStorage.setItem('tokenData', JSON.stringify(item));
+  };
+
+  const refreshTokenIfNeeded = async () => {
+    const token = getTokenWithExpiry();
+    if (token) {
+      const tokenData = JSON.parse(localStorage.getItem('tokenData') || '{}');
+      const now = new Date().getTime();
+      const timeUntilExpiry = tokenData.expiry - now;
+      
+      if (timeUntilExpiry < 5 * 60 * 1000) {
+        try {
+          const response = await fetch('/api/refresh-token', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setTokenWithExpiry(data.token);
+            console.log('Token erfolgreich aktualisiert');
+          } else {
+            throw new Error('Token konnte nicht aktualisiert werden');
+          }
+        } catch (error) {
+          console.error('Fehler beim Aktualisieren des Tokens:', error);
+          router.push('/login');
         }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch profile');
       }
-
-      const data = await response.json();
-      setProfile({
-        ...data,
-        bio: data.bio || '',
-        avatar: data.avatar || '/default-avatar.png' // Standard-Avatar
-      });
-    } catch (error) {
-      console.error('Error fetching profile:', error);
     }
   };
+
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      try {
+        const token = getTokenWithExpiry();
+        if (!token) {
+          router.push('/login');
+          return;
+        }
+
+        const [profileResponse, tokenRefreshResponse] = await Promise.all([
+          fetch('/api/profile', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }),
+          refreshTokenIfNeeded()
+        ]);
+
+        if (!profileResponse.ok) {
+          throw new Error('Failed to fetch profile');
+        }
+
+        const data = await profileResponse.json();
+        setProfile({
+          ...data,
+          bio: data.bio || '',
+          avatar: data.avatar || '/default-avatar.png'
+        });
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        router.push('/login');
+      }
+    };
+
+    fetchProfileData();
+  }, []);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -70,7 +130,8 @@ export default function ProfilePage() {
     if (!profile) return;
 
     try {
-      const token = localStorage.getItem('tokenData');
+      await refreshTokenIfNeeded();
+      const token = getTokenWithExpiry();
       if (!token) {
         router.push('/login');
         return;
@@ -80,7 +141,7 @@ export default function ProfilePage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${JSON.parse(token).token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           name: profile.name,
@@ -91,14 +152,15 @@ export default function ProfilePage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update profile');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update profile');
       }
 
       alert('Profil erfolgreich aktualisiert');
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating profile:', error);
-      alert('Fehler beim Aktualisieren des Profils');
+      alert(`Fehler beim Aktualisieren des Profils: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
     }
   };
 
