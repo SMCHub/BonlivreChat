@@ -61,6 +61,7 @@ export default function ChatPage() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<number>(-1);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showCopiedTooltip, setShowCopiedTooltip] = useState(false);
+  const [isBotTyping, setIsBotTyping] = useState(false);
 
   const router = useRouter();
 
@@ -397,98 +398,59 @@ export default function ChatPage() {
     };
 
     setIsLoading(true);
+    setIsBotTyping(true);
+    setInput('');
+    setFileRequest(null);
+    setUploadedFileContent(null);
+    setUploadedFileInfo(null);
+
+    setCurrentChat(prev => prev ? {
+      ...prev,
+      messages: [...prev.messages, newMessage]
+    } : null);
 
     try {
-      if (input.toLowerCase().startsWith('/bonlivre')) {
-        setCurrentChat(prev => prev ? {
-          ...prev,
-          messages: [...prev.messages, newMessage]
-        } : null);
+      let chatId = currentChat.id;
+      let assistantMessage;
 
-        if (input.toLowerCase().startsWith('/bonlivre produkt:') ||
-            input.toLowerCase().startsWith('/bonlivre kategorie:')) {
-          const [command, searchTerm] = input.split(':');
-          const searchType = command.split(' ')[1].toLowerCase();
-          console.log(`Suche nach ${searchType}: ${searchTerm.trim()}`);
-          const foundProducts = await searchWordPressProducts(searchTerm.trim(), searchType);
-          
-          console.log(`Gefundene Produkte: ${foundProducts.length}`);
-          
-          if (foundProducts.length > 0) {
-            foundProducts.forEach(product => {
-              console.log(`Zeige Produkt an: ${product.name}`);
-              displayProduct(product);
-            });
-          } else {
-            const noProductsMessage: Message = {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: `Es wurden keine Produkte für "${searchTerm.trim()}" gefunden. Bitte versuchen Sie es mit einem anderen Suchbegriff.`
-            };
-            setCurrentChat(prev => prev ? {
-              ...prev,
-              messages: [...prev.messages, noProductsMessage]
-            } : null);
-          }
-        } else if (input.toLowerCase().startsWith('/bonlivre bestellung:')) {
-          const [, orderInfo] = input.split(':');
-          const [orderNumber, postcode] = orderInfo.trim().split(' ');
-          
-          if (!orderNumber || !postcode) {
-            const errorMessage: Message = {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: 'Bitte geben Sie sowohl die Bestellnummer als auch die Postleitzahl an.'
-            };
-            setCurrentChat(prev => prev ? {
-              ...prev,
-              messages: [...prev.messages, errorMessage]
-            } : null);
-            return;
-          }
-
-          const orderDetails = await fetchOrderDetails(orderNumber, postcode);
-
-          if (orderDetails.error) {
-            let errorContent = orderDetails.error;
-            if (orderDetails.orderPostcode && orderDetails.requestPostcode) {
-              errorContent += ` Die Postleitzahl in der Bestellung (${orderDetails.orderPostcode}) stimmt nicht mit der angegebenen Postleitzahl (${orderDetails.requestPostcode}) überein.`;
-            }
-            const errorMessage: Message = {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: errorContent
-            };
-            setCurrentChat(prev => prev ? {
-              ...prev,
-              messages: [...prev.messages, errorMessage]
-            } : null);
-          } else {
-            displayOrderDetails(orderDetails);
-          }
-        } else {
-          // Unbekannter /bonlivre Befehl
-          const unknownCommandMessage: Message = {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: `Unbekannter Befehl. Verfügbare Befehle sind: /bonlivre produkt:, /bonlivre kategorie:, /bonlivre bestellung:`
-          };
-          setCurrentChat(prev => prev ? {
-            ...prev,
-            messages: [...prev.messages, unknownCommandMessage]
-          } : null);
-        }
+      if (newMessage.content.toLowerCase().startsWith('/bonlivre produkt:') || 
+          newMessage.content.toLowerCase().startsWith('/bonlivre kategorie:')) {
+        const [command, searchTerm] = newMessage.content.split(':');
+        const searchType = command.toLowerCase().includes('produkt') ? 'produkt' : 'kategorie';
+        const products = await searchWordPressProducts(searchTerm.trim(), searchType);
+        assistantMessage = await sendMessageAndUpdateChat(chatId, newMessage);
+      } else if (newMessage.content.toLowerCase().startsWith('/bonlivre bestellung:')) {
+        assistantMessage = await sendMessageAndUpdateChat(chatId, newMessage);
       } else {
-        // Normale Nachricht
-        await sendMessageAndUpdateChat(currentChat.id, newMessage);
+        assistantMessage = await sendMessageAndUpdateChat(chatId, newMessage);
       }
-      setInput('');
-      setFileRequest(null);
+
+      if (assistantMessage) {
+        await typewriterEffect(assistantMessage.content);
+      }
     } catch (error) {
       console.error('Fehler beim Senden der Nachricht:', error);
-      setError('Fehler beim Senden der Nachricht. Bitte versuchen Sie es später erneut.');
+      setError('Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es später erneut.');
     } finally {
       setIsLoading(false);
+      setIsBotTyping(false);
+    }
+  };
+
+  const typewriterEffect = async (text: string) => {
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    let displayedText = '';
+
+    for (let i = 0; i < text.length; i++) {
+      displayedText += text[i];
+      setCurrentChat(prev => prev ? {
+        ...prev,
+        messages: [
+          ...prev.messages.slice(0, -1),
+          { ...prev.messages[prev.messages.length - 1], content: displayedText }
+        ]
+      } : null);
+      await delay(20); // Passen Sie diesen Wert an, um die Geschwindigkeit zu ändern
     }
   };
 
@@ -971,7 +933,7 @@ export default function ChatPage() {
                   onKeyDown={handleKeyDown}
                   placeholder="Schreiben Sie eine Nachricht..."
                   className="w-full pr-24 rounded-lg border-none shadow-md transition-all duration-300 focus:ring-2 focus:ring-accent-color bg-white text-gray-800"
-                  disabled={!currentChat}
+                  disabled={!currentChat || isBotTyping}
                 />
                 {suggestions.length > 0 && (
                   <div className="suggestions-container bg-gray-700 border border-gray-600 rounded-lg shadow-lg text-sm">
@@ -1016,10 +978,10 @@ export default function ChatPage() {
                   />
                   <Button 
                     onClick={handleSend} 
-                    disabled={isLoading || !currentChat} 
+                    disabled={isLoading || !currentChat || isBotTyping} 
                     className="bg-accent-color hover:bg-link-hover-color p-1 transition-colors duration-200"
                   >
-                    {isLoading ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                    {isLoading || isBotTyping ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>

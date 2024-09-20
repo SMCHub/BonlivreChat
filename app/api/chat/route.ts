@@ -6,6 +6,9 @@ import jwt from 'jsonwebtoken';
 const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Fügen Sie diese Zeile hinzu
+prisma.$connect().then(() => console.log('Prisma connected')).catch(e => console.error('Prisma connection error:', e));
+
 interface Product {
   name: string;
   price: string;

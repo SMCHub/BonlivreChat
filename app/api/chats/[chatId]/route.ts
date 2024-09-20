@@ -100,7 +100,7 @@ export async function POST(request: Request, { params }: { params: { chatId: str
     } else {
       const allMessages = [...chat.messages, message];
       const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: "gpt-4o-mini",  // oder das Modell, das Sie verwenden möchten
         messages: allMessages.map(m => ({ role: m.role, content: m.content })),
       });
       assistantMessage = completion.choices[0]?.message;
