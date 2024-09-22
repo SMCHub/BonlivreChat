@@ -8,9 +8,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   },
-  connectionTimeout: 10000, // 10 Sekunden
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 export async function sendWelcomeEmail(to: string) {
@@ -41,6 +41,12 @@ export async function sendWelcomeEmail(to: string) {
 export async function sendVerificationEmail(email: string, token: string) {
   console.time('E-Mail-Versand');
   try {
+    console.log('E-Mail-Konfiguration:', {
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      secure: process.env.EMAIL_SECURE,
+      user: process.env.EMAIL_USER
+    });
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.bonlivrechat.ch';
     const verificationLink = `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
     let mailOptions = {
@@ -53,6 +59,7 @@ export async function sendVerificationEmail(email: string, token: string) {
         <a href="${verificationLink}">${verificationLink}</a>
       `
     };
+    console.log('Versuche E-Mail zu senden...');
     let info = await transporter.sendMail(mailOptions);
     console.log('Verifizierungs-E-Mail gesendet:', info.messageId);
     console.timeEnd('E-Mail-Versand');
