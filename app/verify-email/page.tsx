@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function VerifyEmail() {
+function VerifyEmailContent() {
   const [status, setStatus] = useState('Verifizierung läuft...');
   const [isSuccess, setIsSuccess] = useState(false);
   const [isVerificationComplete, setIsVerificationComplete] = useState(false);
@@ -48,5 +48,13 @@ export default function VerifyEmail() {
       <p className={`text-xl ${isSuccess ? 'text-green-500' : 'text-red-500'}`}>{status}</p>
       {isSuccess && !isVerificationComplete && <p className="mt-4">Sie werden in Kürze zur Login-Seite weitergeleitet...</p>}
     </div>
+  );
+}
+
+export default function VerifyEmail() {
+  return (
+    <Suspense fallback={<div>Laden...</div>}>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }
