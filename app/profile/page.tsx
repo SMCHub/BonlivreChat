@@ -89,7 +89,12 @@ export default function ProfilePage() {
     // Implementieren Sie hier die Logout-Logik
   };
 
-  const token = useMemo(() => getTokenWithExpiry(), []);
+  const token = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      return getTokenWithExpiry();
+    }
+    return null;
+  }, []);
 
   const fetchProfile = useCallback(async () => {
     const now = Date.now();
@@ -126,6 +131,12 @@ export default function ProfilePage() {
     const intervalId = setInterval(fetchProfile, 60000); // Alle 60 Sekunden aktualisieren
     return () => clearInterval(intervalId);
   }, [fetchProfile]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Zugriff auf localStorage hier
+    }
+  }, []);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
