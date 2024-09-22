@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

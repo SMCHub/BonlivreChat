@@ -2,12 +2,15 @@ import nodemailer from 'nodemailer';
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || '587'),
+  port: Number(process.env.EMAIL_PORT),
   secure: process.env.EMAIL_SECURE === 'true',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  connectionTimeout: 10000, // 10 Sekunden
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
 export async function sendWelcomeEmail(to: string) {
@@ -35,3 +38,37 @@ export async function sendWelcomeEmail(to: string) {
     throw error;
   }
 }
+export async function sendVerificationEmail(email: string, token: string) {
+  console.time('E-Mail-Versand');
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.bonlivrechat.ch';
+    const verificationLink = `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
+    let mailOptions = {
+      from: '"BonlivreChat" <noreply@bonlivrechat.ch>',
+      to: email,
+      subject: 'Verifizieren Sie Ihre E-Mail-Adresse',
+      text: `Bitte klicken Sie auf den folgenden Link, um Ihre E-Mail-Adresse zu verifizieren: ${verificationLink}`,
+      html: `
+        <p>Bitte klicken Sie auf den folgenden Link, um Ihre E-Mail-Adresse zu verifizieren:</p>
+        <a href="${verificationLink}">${verificationLink}</a>
+      `
+    };
+    let info = await transporter.sendMail(mailOptions);
+    console.log('Verifizierungs-E-Mail gesendet:', info.messageId);
+    console.timeEnd('E-Mail-Versand');
+    return true;
+  } catch (error) {
+    console.timeEnd('E-Mail-Versand');
+    console.error('Fehler beim E-Mail-Versand:', error);
+    throw error;
+  }
+}
+export async function testEmailService() {
+  try {
+    await transporter.verify();
+    console.log('E-Mail-Service ist bereit');
+  } catch (error) {
+    console.error('E-Mail-Service-Fehler:', error);
+  }
+}
+

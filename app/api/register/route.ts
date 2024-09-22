@@ -1,61 +1,69 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
-import { sendWelcomeEmail } from '@/lib/emailService';
+import prisma from '@/lib/prisma';
+import { sendVerificationEmail } from '@/lib/emailService'; // Stellen Sie sicher, dass diese Funktion korrekt importiert ist
+import bcrypt from 'bcrypt';
 
 export async function POST(req: Request) {
   try {
-    console.log('Starting registration process');
     const { email, password } = await req.json();
-    console.log('Received registration request for email:', email);
 
-    // Validierung
-    if (!email || !password) {
-      return NextResponse.json({ error: 'E-Mail und Passwort sind erforderlich' }, { status: 400 });
-    }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      return NextResponse.json({ error: 'Ungültige E-Mail-Adresse' }, { status: 400 });
-    }
-    if (password.length < 8) {
-      return NextResponse.json({ error: 'Das Passwort muss mindestens 8 Zeichen lang sein' }, { status: 400 });
-    }
-
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-
-    if (existingUser) {
-      console.log('User already exists');
-      return NextResponse.json({ error: 'E-Mail bereits registriert' }, { status: 400 });
-    }
-
-    console.log('Hashing password');
+    // Passwort hashen
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    console.log('Creating new user in database');
+    // Generiere ein Verifizierungs-Token
+    const verificationToken = jwt.sign({ email }, process.env.JWT_SECRET!, { expiresIn: '1d' });
+
+    console.time('Benutzer erstellen');
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
+        verificationToken,
       },
     });
-
-    // Senden der Willkommens-E-Mail
-    await sendWelcomeEmail(user.email);
+    console.timeEnd('Benutzer erstellen');
+    console.log('Benutzer erstellt:', user.id);
+    console.log('Generated verification token:', verificationToken);
 
     if (!process.env.JWT_SECRET) {
-      console.error('JWT_SECRET is not set');
-      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+      console.error('JWT_SECRET ist nicht gesetzt');
+      return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 });
     }
 
-    console.log('Generating JWT token');
     const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    console.log('Registration successful');
-    return NextResponse.json({ token });
-  } catch (error) {
-    console.error('Registration error:', error);
+
+    try {
+      await sendVerificationEmail(user.email, verificationToken);
+      console.log('Verification email sent successfully to:', user.email);
+    } catch (emailError) {
+      console.error('Error sending verification email:', emailError);
+      // Detailliertes Logging des Fehlers
+      if (emailError instanceof Error) {
+        console.error('Error name:', emailError.name);
+        console.error('Error message:', emailError.message);
+        console.error('Error stack:', emailError.stack);
+      }
+      // Informiere den Benutzer über den Fehler beim E-Mail-Versand
+      return NextResponse.json({ 
+        token, 
+        message: 'Registrierung erfolgreich, aber die Verifizierungs-E-Mail konnte nicht gesendet werden. Bitte kontaktieren Sie den Support.',
+        error: 'E-Mail-Versand fehlgeschlagen'
+      }, { status: 200 });
+    }
+
+    // Erfolgreiche Registrierung
     return NextResponse.json({ 
-      error: 'Ein unerwarteter Fehler ist aufgetreten', 
-      details: error instanceof Error ? error.message : String(error) 
+      token, 
+      message: 'Registrierung erfolgreich. Bitte überprüfen Sie Ihre E-Mail zur Verifizierung.' 
+    }, { status: 201 });
+  } catch (error) {
+    console.error('Fehler bei der Registrierung:', error);
+    return NextResponse.json({ 
+      error: 'Registrierung fehlgeschlagen', 
+      details: (error as Error).message 
     }, { status: 500 });
+  } finally {
+    await prisma.$disconnect();
   }
 }

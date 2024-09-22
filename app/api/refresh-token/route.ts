@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('Authorization');
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string, email: string };
+    await prisma.blacklistedToken.create({ data: { token } });
     const newToken = jwt.sign({ id: decoded.id, email: decoded.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
     return NextResponse.json({ token: newToken });
   } catch (error) {

@@ -22,6 +22,11 @@ model User {
   bio       String?
   avatar    String?
   chats     Chat[]
+  role        String    @default("user")
+  isVerified        Boolean @default(false)
+  verificationToken String?
+  resetPasswordToken String?
+  resetPasswordExpires DateTime?
 
   @@index([email])
 }
@@ -60,4 +65,10 @@ model Product {
   chat        Chat     @relation(fields: [chatId], references: [id])
 
   @@index([chatId])
+}
+
+model BlacklistedToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  createdAt DateTime @default(now())
 }

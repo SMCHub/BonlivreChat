@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { handleError } from '@/lib/errorHandler';
 
 export async function POST(request: Request) {
@@ -12,8 +12,8 @@ export async function POST(request: Request) {
     const user = await prisma.user.findUnique({ where: { email } });
     console.log('User found:', user ? 'Yes' : 'No');
 
-    if (!user) {
-      return NextResponse.json({ error: 'Benutzer nicht gefunden' }, { status: 404 });
+    if (!user || !user.isVerified) {
+      return NextResponse.json({ error: 'Benutzer nicht gefunden oder E-Mail nicht verifiziert' }, { status: 404 });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);

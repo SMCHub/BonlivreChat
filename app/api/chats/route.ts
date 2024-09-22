@@ -1,32 +1,29 @@
- import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
-
-// Entfernen Sie die Zeile mit prisma.$connect()
+import prisma from '@/lib/prisma';
 
 export async function GET(request: Request) {
   console.log('Chats route called');
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('No token provided');
+    console.log('Kein Token bereitgestellt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const token = authHeader.split(' ')[1];
   console.log('Token received:', token);
 
   if (!process.env.JWT_SECRET) {
-    console.error('JWT_SECRET is not set');
+    console.error('JWT_SECRET ist nicht gesetzt');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 
   try {
-    console.log('Attempting to verify token');
+    console.log('Versuche Token zu verifizieren');
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as { id: string };
-    console.log('Token verified, decoded:', decoded);
+    console.log('Token verifiziert, decoded:', decoded);
     const userId = decoded.id;
 
-
-    // Wenn nicht im Cache, holen Sie die Daten aus der Datenbank
+    // Chats aus der Datenbank holen
     const chats = await prisma.chat.findMany({
       where: { userId },
       select: {
@@ -40,7 +37,7 @@ export async function GET(request: Request) {
         }
       },
       orderBy: { updatedAt: 'desc' },
-      take: 20 // Begrenzen Sie die Anzahl der zurückgegebenen Chats
+      take: 20 // Begrenzen der Anzahl der zurückgegebenen Chats
     });
 
     return NextResponse.json(chats);
@@ -49,7 +46,7 @@ export async function GET(request: Request) {
     if (error instanceof jwt.JsonWebTokenError) {
       return NextResponse.json({ error: 'Ungültiger Token', details: error.message }, { status: 401 });
     }
-    return NextResponse.json({ error: 'Error fetching chats', details: (error as Error).message }, { status: 500 });
+    return NextResponse.json({ error: 'Ein unerwarteter Fehler ist aufgetreten' }, { status: 500 });
   } finally {
     await prisma.$disconnect();
   }

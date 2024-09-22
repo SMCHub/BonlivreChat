@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 export async function POST(req: Request, { params }: { params: { chatId: string } }) {
   console.log("Upload-Route aufgerufen");

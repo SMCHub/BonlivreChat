@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { User, Mail, Key, ArrowLeft } from 'lucide-react';
+import Image from 'next/image';
 
 interface UserProfile {
   email: string;
   name: string;
   avatar: string;
   bio?: string;
+  isVerified: boolean;
 }
 
 export default function ProfilePage() {
@@ -18,6 +20,11 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [newAvatar, setNewAvatar] = useState<File | null>(null);
   const router = useRouter();
+  const [currentChat, setCurrentChat] = useState(null);
+
+  const loadChatHistory = () => {
+    // Implementieren Sie hier die Logik zum Laden des Chat-Verlaufs
+  };
 
   const getTokenWithExpiry = () => {
     const tokenString = localStorage.getItem('tokenData');
@@ -75,6 +82,10 @@ export default function ProfilePage() {
     }
   };
 
+  const handleLogout = () => {
+    // Implementieren Sie hier die Logout-Logik
+  };
+
   useEffect(() => {
     const fetchProfileData = async () => {
       try {
@@ -110,7 +121,7 @@ export default function ProfilePage() {
     };
 
     fetchProfileData();
-  }, []);
+  }, [handleLogout, refreshTokenIfNeeded, router]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -182,10 +193,12 @@ export default function ProfilePage() {
         
         <div className="relative">
           <div className="h-48 w-full bg-gradient-to-r from-blue-500 to-purple-600"></div>
-          <img
+          <Image
             className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 h-32 w-32 rounded-full border-4 border-white shadow-lg"
             src={profile.avatar}
             alt={`Avatar von ${profile.name}`}
+            width={128}
+            height={128}
           />
           {isEditing && (
             <input
@@ -225,7 +238,17 @@ export default function ProfilePage() {
                   {isEditing ? (
                     <Input value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})} className="max-w-md" />
                   ) : (
-                    <span>{profile.email}</span>
+                    <span>{profile.email}
+                      {profile.isVerified ? (
+                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Verifiziert
+                        </span>
+                      ) : (
+                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Nicht verifiziert
+                        </span>
+                      )}
+                    </span>
                   )}
                 </dd>
               </div>

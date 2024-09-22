@@ -15,6 +15,7 @@ import remarkGfm from 'remark-gfm';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { ClipboardIcon } from 'lucide-react';
+import VerificationWarning from '@/components/VerificationWarning';
 
 interface Message {
   id: string;
@@ -63,6 +64,7 @@ export default function ChatPage() {
   const [showTooltip, setShowTooltip] = useState(false);
   const [showCopiedTooltip, setShowCopiedTooltip] = useState(false);
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
 
   const router = useRouter();
 
@@ -137,30 +139,27 @@ export default function ChatPage() {
           'Authorization': `Bearer ${token}`
         }
       })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Token ungültig');
-        }
-        return response.json();
-      })
+      .then(response => response.json())
       .then(data => {
         if (data.user) {
-          console.log('Benutzer erfolgreich gesetzt:', data.user);
+          console.log('Vollständige Benutzerdaten:', data.user);
           setUser(data.user);
-          refreshTokenIfNeeded();
+          setIsVerified(data.user.isVerified);
+          console.log('Verifizierungsstatus nach Setzen:', data.user.isVerified);
+          if (!data.user.isVerified) {
+            // Zeige eine Warnung oder leite zur Verifizierungsseite weiter
+            console.log('Benutzer ist nicht verifiziert');
+            // Hier können Sie eine Warnung anzeigen oder zur Verifizierungsseite weiterleiten
+          } else {
+            refreshTokenIfNeeded();
+          }
         } else {
           throw new Error('Kein Benutzer in den Daten gefunden');
         }
       })
       .catch(error => {
         console.error('Fehler bei der Token-Überprüfung:', error);
-        if (error.message === 'Datenbankverbindung fehlgeschlagen') {
-          setError('Es gibt ein Problem mit der Datenbankverbindung. Bitte versuchen Sie es später erneut.');
-        } else if (error.message === 'Ungültiger Token') {
-          handleLogout();
-        } else {
-          setError('Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
-        }
+        handleLogout();
       });
     } else {
       console.log('Kein gültiger Token gefunden, leite zur Login-Seite weiter');
@@ -386,6 +385,11 @@ export default function ChatPage() {
   };
 
   const handleSend = async () => {
+    if (!isVerified) {
+      setError('Bitte verifizieren Sie Ihre E-Mail-Adresse, um Nachrichten zu senden.');
+      return;
+    }
+
     if (!input.trim() && !fileRequest) return;
     if (!currentChat) {
       console.error('Kein aktueller Chat ausgewählt');
@@ -747,6 +751,14 @@ export default function ChatPage() {
   }, []);
 
   const handleCreateNewChat = async () => {
+    console.log('handleCreateNewChat aufgerufen. isVerified:', isVerified);
+    if (!isVerified) {
+      console.log('Benutzer ist nicht verifiziert. Zeige Fehlermeldung.');
+      setError('Bitte verifizieren Sie Ihre E-Mail-Adresse, um einen neuen Chat zu erstellen.');
+      return;
+    }
+  
+    console.log('Benutzer ist verifiziert. Erstelle neuen Chat.');
     const newChat: Chat = {
       id: Date.now().toString(),
       messages: []
@@ -776,6 +788,63 @@ export default function ChatPage() {
   function formatTime(date: Date) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
+
+  const updateUserStatus = async () => {
+    const token = getTokenWithExpiry();
+    if (token) {
+      try {
+        const response = await fetch('/api/user-status', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+          setIsVerified(data.user.isVerified);
+          console.log('Benutzerstatus aktualisiert:', data.user.isVerified);
+        }
+      } catch (error) {
+        console.error('Fehler beim Aktualisieren des Benutzerstatus:', error);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const token = getTokenWithExpiry();
+    if (token) {
+      fetch('/api/verify-token', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.user) {
+          console.log('Vollständige Benutzerdaten:', data.user);
+          setUser(data.user);
+          setIsVerified(data.user.isVerified);
+          console.log('Verifizierungsstatus nach Setzen:', data.user.isVerified);
+          if (!data.user.isVerified) {
+            // Zeige eine Warnung oder leite zur Verifizierungsseite weiter
+            console.log('Benutzer ist nicht verifiziert');
+            // Hier können Sie eine Warnung anzeigen oder zur Verifizierungsseite weiterleiten
+          } else {
+            refreshTokenIfNeeded();
+          }
+        } else {
+          throw new Error('Kein Benutzer in den Daten gefunden');
+        }
+      })
+      .catch(error => {
+        console.error('Fehler bei der Token-Überprüfung:', error);
+        handleLogout();
+      });
+    } else {
+      console.log('Kein gültiger Token gefunden, leite zur Login-Seite weiter');
+      router.push('/login');
+    }
+  }, []);
 
   if (!user) {
     return null; // oder eine Lade-Animation
@@ -808,6 +877,13 @@ export default function ChatPage() {
             </Button>
           </div>
         </header>
+
+        {user && !isVerified && (
+          <>
+            <VerificationWarning />
+            {console.log('Rendering VerificationWarning. isVerified:', isVerified)}
+          </>
+        )}
 
         {/* Main content */}
         <div className="flex flex-1 overflow-hidden">
@@ -961,7 +1037,7 @@ export default function ChatPage() {
                   onKeyDown={handleKeyDown}
                   placeholder="Schreiben Sie eine Nachricht..."
                   className="w-full pr-24 rounded-lg border-none shadow-md transition-all duration-300 focus:ring-2 focus:ring-accent-color bg-white text-gray-800"
-                  disabled={!currentChat || isBotTyping}
+                  disabled={!currentChat || isBotTyping || !isVerified}
                 />
                 {suggestions.length > 0 && (
                   <div className="suggestions-container bg-gray-700 border border-gray-600 rounded-lg shadow-lg text-sm">
@@ -1006,7 +1082,7 @@ export default function ChatPage() {
                   />
                   <Button 
                     onClick={handleSend} 
-                    disabled={isLoading || !currentChat || isBotTyping} 
+                    disabled={isLoading || !currentChat || isBotTyping || !isVerified} 
                     className="bg-accent-color hover:bg-link-hover-color p-1 transition-colors duration-200"
                   >
                     {isLoading || isBotTyping ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
 
 export async function GET(request: Request) {
@@ -15,7 +15,13 @@ export async function GET(request: Request) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { name: true, email: true, bio: true, avatar: true }
+      select: { 
+        name: true, 
+        email: true, 
+        bio: true, 
+        avatar: true,
+        isVerified: true
+      }
     });
 
     if (!user) {
@@ -27,7 +33,12 @@ export async function GET(request: Request) {
     return NextResponse.json(user);
   } catch (error) {
     console.error('Error fetching profile:', error);
-    return NextResponse.json({ error: 'An error occurred' }, { status: 500 });
+    if (error instanceof jwt.JsonWebTokenError) {
+      return NextResponse.json({ error: 'Ungültiger Token' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Ein unerwarteter Fehler ist aufgetreten' }, { status: 500 });
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
