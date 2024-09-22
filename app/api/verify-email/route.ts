@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { sendWelcomeEmail } from '@/lib/emailService';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -50,7 +51,16 @@ export async function GET(request: Request) {
     });
 
     console.log('Benutzer erfolgreich verifiziert:', user.email);
-    return NextResponse.json({ message: 'E-Mail erfolgreich verifiziert' });
+
+    // Sende Willkommens-E-Mail nach erfolgreicher Verifizierung
+    try {
+      await sendWelcomeEmail(user.email);
+      console.log('Willkommens-E-Mail gesendet an:', user.email);
+      return NextResponse.json({ message: 'E-Mail erfolgreich verifiziert und Willkommens-E-Mail gesendet' });
+    } catch (emailError) {
+      console.error('Fehler beim Senden der Willkommens-E-Mail:', emailError);
+      return NextResponse.json({ message: 'E-Mail erfolgreich verifiziert, aber Fehler beim Senden der Willkommens-E-Mail' });
+    }
   } catch (error) {
     console.error('Fehler bei der E-Mail-Verifizierung:', error);
     return NextResponse.json({ error: 'Ein Fehler ist aufgetreten', details: (error as Error).message }, { status: 500 });

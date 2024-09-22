@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { User, Mail, Key, ArrowLeft } from 'lucide-react';
+import { User, Mail, Key, ArrowLeft, CheckCircle } from 'lucide-react';
 import Image from 'next/image';
+import { debounce } from 'lodash';
 
 interface UserProfile {
   email: string;
@@ -21,6 +22,8 @@ export default function ProfilePage() {
   const [newAvatar, setNewAvatar] = useState<File | null>(null);
   const router = useRouter();
   const [currentChat, setCurrentChat] = useState(null);
+  const [isVerified, setIsVerified] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
 
   const loadChatHistory = () => {
     // Implementieren Sie hier die Logik zum Laden des Chat-Verlaufs
@@ -86,42 +89,43 @@ export default function ProfilePage() {
     // Implementieren Sie hier die Logout-Logik
   };
 
-  useEffect(() => {
-    const fetchProfileData = async () => {
-      try {
-        const token = getTokenWithExpiry();
-        if (!token) {
-          router.push('/login');
-          return;
-        }
+  const token = useMemo(() => getTokenWithExpiry(), []);
 
-        const [profileResponse, tokenRefreshResponse] = await Promise.all([
-          fetch('/api/profile', {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }),
-          refreshTokenIfNeeded()
-        ]);
+  const fetchProfile = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchTime < 60000) return; // Nur alle 60 Sekunden aktualisieren
 
-        if (!profileResponse.ok) {
-          throw new Error('Failed to fetch profile');
-        }
-
-        const data = await profileResponse.json();
-        setProfile({
-          ...data,
-          bio: data.bio || '',
-          avatar: data.avatar || '/default-avatar.png'
-        });
-      } catch (error) {
-        console.error('Error fetching profile:', error);
+    try {
+      if (!token) {
         router.push('/login');
+        return;
       }
-    };
 
-    fetchProfileData();
-  }, [handleLogout, refreshTokenIfNeeded, router]);
+      const profileResponse = await fetch('/api/profile', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!profileResponse.ok) throw new Error('Failed to fetch profile');
+
+      const data = await profileResponse.json();
+      setProfile({
+        ...data,
+        bio: data.bio || '',
+        avatar: data.avatar || '/default-avatar.png'
+      });
+      setIsVerified(data.isVerified);
+      setLastFetchTime(now);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      router.push('/login');
+    }
+  }, [lastFetchTime, router, token]);
+
+  useEffect(() => {
+    fetchProfile();
+    const intervalId = setInterval(fetchProfile, 60000); // Alle 60 Sekunden aktualisieren
+    return () => clearInterval(intervalId);
+  }, [fetchProfile]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -172,6 +176,33 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Error updating profile:', error);
       alert(`Fehler beim Aktualisieren des Profils: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
+    }
+  };
+
+  const resendVerificationEmail = async () => {
+    try {
+      const token = getTokenWithExpiry();
+      if (!token) {
+        throw new Error('Kein gültiger Token gefunden');
+      }
+
+      const response = await fetch('/api/resend-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (response.ok) {
+        alert('Verifizierungs-E-Mail wurde erneut gesendet. Bitte überprüfen Sie Ihren Posteingang.');
+      } else {
+        const data = await response.json();
+        throw new Error(data.error || 'Fehler beim erneuten Senden der Verifizierungs-E-Mail');
+      }
+    } catch (error) {
+      console.error('Fehler beim erneuten Senden der Verifizierungs-E-Mail:', error);
+      alert('Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
     }
   };
 
@@ -232,22 +263,24 @@ export default function ProfilePage() {
               <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500 flex items-center">
                   <Mail className="mr-2 h-5 w-5" />
-                  E-Mail-Adresse
+                  E-Mail
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                  {isEditing ? (
-                    <Input value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})} className="max-w-md" />
-                  ) : (
-                    <span>{profile.email}
-                      {profile.isVerified ? (
-                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Verifiziert
-                        </span>
-                      ) : (
-                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          Nicht verifiziert
-                        </span>
-                      )}
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 flex items-center justify-between">
+                  <span>{profile.email}</span>
+                  {!isVerified && (
+                    <Button
+                      onClick={resendVerificationEmail}
+                      variant="ghost"
+                      size="sm"
+                      className="ml-2"
+                    >
+                      E-Mail erneut verifizieren
+                    </Button>
+                  )}
+                  {isVerified && (
+                    <span className="text-green-500 flex items-center">
+                      <CheckCircle className="mr-1 h-4 w-4" />
+                      Verifiziert
                     </span>
                   )}
                 </dd>

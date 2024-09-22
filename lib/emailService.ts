@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendWelcomeEmail(to: string) {
-  console.log('Attempting to send welcome email to:', to);
+  console.log('Starte sendWelcomeEmail Funktion für:', to);
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: to,
@@ -29,12 +29,17 @@ export async function sendWelcomeEmail(to: string) {
   };
 
   try {
-    console.log('Transporter configuration:', JSON.stringify(transporter.options));
+    console.log('E-Mail-Konfiguration:', {
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      secure: process.env.EMAIL_SECURE,
+      user: process.env.EMAIL_USER
+    });
     const info = await transporter.sendMail(mailOptions);
     console.log('Willkommens-E-Mail gesendet:', info.response);
     return info;
   } catch (error) {
-    console.error('Fehler beim Senden der Willkommens-E-Mail:', error);
+    console.error('Detaillierter Fehler beim Senden der Willkommens-E-Mail:', error);
     throw error;
   }
 }
@@ -50,7 +55,7 @@ export async function sendVerificationEmail(email: string, token: string) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.bonlivrechat.ch';
     const verificationLink = `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
     let mailOptions = {
-      from: '"BonlivreChat" <noreply@bonlivrechat.ch>',
+      from: '"BonlivreChat" <info@bonlivre.ch>',
       to: email,
       subject: 'Verifizieren Sie Ihre E-Mail-Adresse',
       text: `Bitte klicken Sie auf den folgenden Link, um Ihre E-Mail-Adresse zu verifizieren: ${verificationLink}`,

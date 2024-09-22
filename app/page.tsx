@@ -1,20 +1,19 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Spinner } from "@/components/ui/spinner"
-import { MessageSquare, Send, LogOut, PlusCircle, Trash, X, Info, Moon, Sun, User } from "lucide-react"
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
+import { MessageSquare, Send, LogOut, PlusCircle, Trash, User, Mail, Key, ArrowLeft, CheckCircle, Info } from 'lucide-react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import jwt from 'jsonwebtoken';
 import { FileUpload } from '@/components/ui/FileUpload';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { ClipboardIcon } from 'lucide-react';
 import VerificationWarning from '@/components/VerificationWarning';
 
 interface Message {
@@ -119,12 +118,10 @@ export default function ChatPage() {
           if (response.ok) {
             const data = await response.json();
             setTokenWithExpiry(data.token);
-            console.log('Token erfolgreich aktualisiert');
           } else {
             throw new Error('Token konnte nicht aktualisiert werden');
           }
         } catch (error) {
-          console.error('Fehler beim Aktualisieren des Tokens:', error);
           handleLogout();
         }
       }
@@ -132,39 +129,41 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    const token = getTokenWithExpiry();
-    if (token) {
-      fetch('/api/verify-token', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.user) {
-          console.log('Vollständige Benutzerdaten:', data.user);
-          setUser(data.user);
-          setIsVerified(data.user.isVerified);
-          console.log('Verifizierungsstatus nach Setzen:', data.user.isVerified);
-          if (!data.user.isVerified) {
-            // Zeige eine Warnung oder leite zur Verifizierungsseite weiter
-            console.log('Benutzer ist nicht verifiziert');
-            // Hier können Sie eine Warnung anzeigen oder zur Verifizierungsseite weiterleiten
+    const checkUserStatus = async () => {
+      const token = getTokenWithExpiry();
+      if (token) {
+        try {
+          const response = await fetch('/api/verify-token', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          const data = await response.json();
+          if (data.user) {
+            setUser(data.user);
+            setIsVerified(data.user.isVerified);
+            if (!data.user.isVerified) {
+              setError('Bitte verifizieren Sie Ihre E-Mail-Adresse, um alle Funktionen nutzen zu können.');
+            } else {
+              await refreshTokenIfNeeded();
+            }
           } else {
-            refreshTokenIfNeeded();
+            throw new Error('Kein Benutzer in den Daten gefunden');
           }
-        } else {
-          throw new Error('Kein Benutzer in den Daten gefunden');
+        } catch (error) {
+          handleLogout();
         }
-      })
-      .catch(error => {
-        console.error('Fehler bei der Token-Überprüfung:', error);
-        handleLogout();
-      });
-    } else {
-      console.log('Kein gültiger Token gefunden, leite zur Login-Seite weiter');
-      router.push('/login');
-    }
+      } else {
+        router.push('/login');
+      }
+    };
+
+    checkUserStatus();
+
+    // Aktualisiere den Benutzerstatus alle 5 Minuten
+    const intervalId = setInterval(checkUserStatus, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -208,7 +207,6 @@ export default function ChatPage() {
         setCurrentChat(chatsData[0]);
       }
     } catch (error) {
-      console.error('Fehler beim Abrufen der Chats:', error);
       setError('Fehler beim Laden der Chats. Bitte versuchen Sie es später erneut.');
     }
   };
@@ -234,7 +232,6 @@ export default function ChatPage() {
         categories: product.categories.map((cat: any) => cat.name)
       })))
     } catch (error) {
-      console.error('Error fetching WordPress products:', error);
       setError('Fehler beim Abrufen der WordPress-Produkte. Bitte versuchen Sie es später erneut.');
     }
   };
@@ -255,19 +252,15 @@ export default function ChatPage() {
       }
       return await response.json();
     } catch (error) {
-      console.error('Fehler beim Erstellen des neuen Chats:', error);
       throw error;
     }
   };
 
   const handleFileSelect = async (file: File) => {
-    console.log("Datei ausgewählt:", file.name);
     setSelectedFile(file);
     if (currentChat) {
       try {
-        console.log("Starte Datei-Upload");
         const uploadResult = await handleFileUpload(file);
-        console.log("Upload-Ergebnis:", uploadResult);
         if (uploadResult) {
           const fileInfo = `Datei hochgeladen: ${file.name} (Typ: ${uploadResult.fileType}, Größe: ${(file.size / 1024).toFixed(2)} KB)`;
           setUploadedFileInfo(fileInfo);
@@ -280,21 +273,17 @@ export default function ChatPage() {
           }
         }
       } catch (error) {
-        console.error("Fehler beim Datei-Upload:", error);
         setError('Datei konnte nicht hochgeladen werden. Bitte versuchen Sie es später erneut.');
       } finally {
         setSelectedFile(null);
       }
     } else {
-      console.log("Kein aktueller Chat ausgewählt");
       setError('Bitte wählen Sie zuerst einen Chat aus oder erstellen Sie einen neuen.');
     }
   };
 
   const handleFileUpload = async (file: File): Promise<{ fileName: string, fileContent: string, fileType: string } | null> => {
-    console.log("handleFileUpload aufgerufen");
     if (!file || !currentChat) {
-      console.log("Keine Datei oder kein Chat ausgewählt");
       return null;
     }
 
@@ -316,7 +305,6 @@ export default function ChatPage() {
 
       return { fileName, fileContent, fileType };
     } catch (error) {
-      console.error('Fehler beim Lesen der Datei:', error);
       setError('Datei konnte nicht gelesen werden. Bitte versuchen Sie es später erneut.');
       return null;
     }
@@ -336,7 +324,6 @@ export default function ChatPage() {
         throw new Error('Failed to update chat on server');
       }
     } catch (error) {
-      console.error('Error updating chat on server:', error);
       setError('Fehler beim Aktualisieren des Chats. Bitte versuchen Sie es spter erneut.');
     }
   };
@@ -378,7 +365,6 @@ export default function ChatPage() {
 
       return assistantMessage;
     } catch (error) {
-      console.error('Error sending message:', error);
       setError('Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es später erneut.');
       throw error;
     }
@@ -392,7 +378,6 @@ export default function ChatPage() {
 
     if (!input.trim() && !fileRequest) return;
     if (!currentChat) {
-      console.error('Kein aktueller Chat ausgewählt');
       return;
     }
 
@@ -435,7 +420,6 @@ export default function ChatPage() {
         await typewriterEffect(assistantMessage.content);
       }
     } catch (error) {
-      console.error('Fehler beim Senden der Nachricht:', error);
       setError('Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es später erneut.');
     } finally {
       setIsLoading(false);
@@ -478,7 +462,6 @@ export default function ChatPage() {
       }
       return data;
     } catch (error) {
-      console.error('Fehler beim Abrufen der Bestelldetails:', error);
       return { error: 'Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.' };
     }
   };
@@ -540,9 +523,7 @@ export default function ChatPage() {
   };
 
   const deleteChat = async (chatId: string) => {
-    console.log('Versuche Chat zu löschen:', chatId);
     if (!user) {
-      console.log('Kein Benutzer eingeloggt');
       return;
     }
     try {
@@ -552,21 +533,16 @@ export default function ChatPage() {
           'Authorization': `Bearer ${getTokenWithExpiry()}`
         }
       });
-      console.log('Antwort vom Server:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error('Chat konnte nicht gelöscht werden');
       }
       setChats(prevChats => {
-        console.log('Aktualisiere Chats nach dem Löschen');
         return prevChats.filter(chat => chat.id !== chatId);
       });
       if (currentChat?.id === chatId) {
-        console.log('Setze aktuellen Chat auf null');
         setCurrentChat(null);
       }
-      console.log('Chat erfolgreich gelöscht');
     } catch (error) {
-      console.error('Fehler beim Löschen des Chats:', error);
       setError('Chat konnte nicht gelöscht werden. Bitte versuchen Sie es später erneut.');
     }
   };
@@ -576,7 +552,6 @@ export default function ChatPage() {
     setUser(null);
     setChats([]);
     setCurrentChat(null);
-    console.log('Benutzer ausgeloggt');
     router.push('/login');
   };
 
@@ -654,7 +629,6 @@ export default function ChatPage() {
 
       return products;
     } catch (error) {
-      console.error('Fehler beim Abrufen der WordPress-Produkte:', error);
       return [];
     }
   };
@@ -662,14 +636,12 @@ export default function ChatPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInput(value);
-    console.log("Input value:", value);
 
     if (value.startsWith('/')) {
       const partialCommand = value.slice(1).toLowerCase();
       const matchingCommands = commands.filter(cmd => 
         cmd.toLowerCase().startsWith(partialCommand)
       );
-      console.log("Matching commands:", matchingCommands);
       setSuggestions(matchingCommands);
     } else {
       setSuggestions([]);
@@ -695,7 +667,6 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    console.log("Suggestions updated:", suggestions);
   }, [suggestions]);
 
   const loadChatHistory = async (chatId: string) => {
@@ -716,7 +687,6 @@ export default function ChatPage() {
         setProducts([]); // Leere das Produkt-Array, wenn keine Produkte vorhanden sind
       }
     } catch (error) {
-      console.error('Fehler beim Laden des Chat-Verlaufs:', error);
     }
   };
 
@@ -743,7 +713,6 @@ export default function ChatPage() {
           setCurrentChat(chatsData[0]); // Setze den ersten Chat als aktuellen Chat
         }
       } catch (error) {
-        console.error('Fehler beim Abrufen der Chats:', error);
       }
     };
 
@@ -751,14 +720,11 @@ export default function ChatPage() {
   }, []);
 
   const handleCreateNewChat = async () => {
-    console.log('handleCreateNewChat aufgerufen. isVerified:', isVerified);
     if (!isVerified) {
-      console.log('Benutzer ist nicht verifiziert. Zeige Fehlermeldung.');
       setError('Bitte verifizieren Sie Ihre E-Mail-Adresse, um einen neuen Chat zu erstellen.');
       return;
     }
   
-    console.log('Benutzer ist verifiziert. Erstelle neuen Chat.');
     const newChat: Chat = {
       id: Date.now().toString(),
       messages: []
@@ -769,13 +735,11 @@ export default function ChatPage() {
       setCurrentChat(createdChat);
       setChats(prevChats => [createdChat, ...prevChats]);
     } catch (error) {
-      console.error('Fehler beim Erstellen des neuen Chats:', error);
       setError('Neuer Chat konnte nicht erstellt werden. Bitte versuchen Sie es später erneut.');
     }
   };
 
   const toggleSidebar = () => {
-    console.log('Sidebar Toggle wurde geklickt');
     setIsSidebarOpen(!isSidebarOpen);
   };
 
@@ -802,72 +766,67 @@ export default function ChatPage() {
           const data = await response.json();
           setUser(data.user);
           setIsVerified(data.user.isVerified);
-          console.log('Benutzerstatus aktualisiert:', data.user.isVerified);
         }
       } catch (error) {
-        console.error('Fehler beim Aktualisieren des Benutzerstatus:', error);
       }
     }
   };
 
   useEffect(() => {
-    const token = getTokenWithExpiry();
-    if (token) {
-      fetch('/api/verify-token', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.user) {
-          console.log('Vollständige Benutzerdaten:', data.user);
-          setUser(data.user);
-          setIsVerified(data.user.isVerified);
-          console.log('Verifizierungsstatus nach Setzen:', data.user.isVerified);
-          if (!data.user.isVerified) {
-            // Zeige eine Warnung oder leite zur Verifizierungsseite weiter
-            console.log('Benutzer ist nicht verifiziert');
-            // Hier können Sie eine Warnung anzeigen oder zur Verifizierungsseite weiterleiten
+    const checkUserStatus = async () => {
+      const token = getTokenWithExpiry();
+      if (token) {
+        try {
+          const response = await fetch('/api/verify-token', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          const data = await response.json();
+          if (data.user) {
+            setUser(data.user);
+            setIsVerified(data.user.isVerified);
+            if (!data.user.isVerified) {
+              setError('Bitte verifizieren Sie Ihre E-Mail-Adresse, um alle Funktionen nutzen zu können.');
+            } else {
+              await refreshTokenIfNeeded();
+            }
           } else {
-            refreshTokenIfNeeded();
+            throw new Error('Kein Benutzer in den Daten gefunden');
           }
-        } else {
-          throw new Error('Kein Benutzer in den Daten gefunden');
+        } catch (error) {
+          handleLogout();
         }
-      })
-      .catch(error => {
-        console.error('Fehler bei der Token-Überprüfung:', error);
-        handleLogout();
-      });
-    } else {
-      console.log('Kein gültiger Token gefunden, leite zur Login-Seite weiter');
-      router.push('/login');
-    }
+      } else {
+        router.push('/login');
+      }
+    };
+
+    checkUserStatus();
+
+    const intervalId = setInterval(checkUserStatus, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   if (!user) {
-    return null; // oder eine Lade-Animation
+    return null;
   }
 
   return (
     <>
       <div className="flex flex-col h-screen bg-white">
-        {/* Header */}
         <header className="shadow-md p-4 flex items-center justify-between relative bg-white z-50">
           <div className="flex items-center">
-            {/* Burger-Icon für Sidebar */}
             <button
               className="p-2 mr-2 rounded-full text-gray-800 hover:bg-gray-200 transition-colors duration-200 block"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
-            {/* Logo */}
             <h1 className="text-2xl font-bold text-accent-color">BonlivreChat.</h1>
           </div>
 
-          {/* Profil und Abmelden Icons */}
           <div className="flex items-center space-x-2">
             <Button onClick={() => router.push('/profile')} variant="ghost" className="p-2 text-text-primary hover:bg-background-secondary rounded-full">
               <User className="h-5 w-5" />
@@ -881,13 +840,10 @@ export default function ChatPage() {
         {user && !isVerified && (
           <>
             <VerificationWarning />
-            {console.log('Rendering VerificationWarning. isVerified:', isVerified)}
           </>
         )}
 
-        {/* Main content */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
           <motion.div 
             initial={false}
             animate={{ x: isSidebarOpen ? 0 : -300 }}
@@ -953,7 +909,6 @@ export default function ChatPage() {
             </div>
           </motion.div>
 
-          {/* Chat area */}
           <div className="flex-1 flex flex-col w-full bg-white">
             <ScrollArea className="flex-1 p-4 h-[calc(100vh-8rem)]" ref={scrollAreaRef}>
               <AnimatePresence>
@@ -1028,7 +983,6 @@ export default function ChatPage() {
                 </motion.div>
               )}
             </ScrollArea>
-            {/* Input area */}
             <div className="p-4 bg-gray-100">
               <div className="relative mb-2">
                 <Input

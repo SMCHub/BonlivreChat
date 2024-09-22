@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,7 @@ export default function LoginPage() {
     return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateInput()) return;
 
@@ -58,7 +58,7 @@ export default function LoginPage() {
       console.error('Fehler bei der Anmeldung:', error);
       setError(error instanceof Error ? error.message : 'Ein unerwarteter Fehler ist aufgetreten');
     }
-  };
+  }, [email, password]);
 
   const setTokenWithExpiry = (token: string) => {
     const now = new Date();
